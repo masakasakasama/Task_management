@@ -18,6 +18,8 @@ const state = {
   editingId: null,
   editingHabitId: null,
   view: "tasks",
+  habitYear: new Date().getFullYear(),
+  habitMonth: new Date().getMonth(),
 };
 
 /**
@@ -203,11 +205,8 @@ function dateKey(d) {
   return `${y}-${m}-${day}`;
 }
 
-function currentMonthDays() {
+function monthDays(year, month) {
   const tk = todayKey();
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
   const lastDay = new Date(year, month + 1, 0).getDate();
   const days = [];
   for (let d = 1; d <= lastDay; d++) {
@@ -220,6 +219,11 @@ function currentMonthDays() {
     });
   }
   return days;
+}
+
+function currentMonthDays() {
+  const now = new Date();
+  return monthDays(now.getFullYear(), now.getMonth());
 }
 
 function cyclePct(current) {
@@ -622,8 +626,12 @@ function renderHabits() {
   const grid = $("#habitsGrid");
   grid.innerHTML = "";
   const monthLabel = $("#habitsMonth");
+  monthLabel.textContent = `${state.habitYear}年 ${state.habitMonth + 1}月`;
+  // 今月以外なら「今月へ」ボタンを表示
   const now = new Date();
-  monthLabel.textContent = `${now.getFullYear()}年 ${now.getMonth() + 1}月 のDaily Habit`;
+  const isCurrentMonth =
+    state.habitYear === now.getFullYear() && state.habitMonth === now.getMonth();
+  $("#thisMonthBtn").hidden = isCurrentMonth;
 
   if (state.habits.length === 0) {
     $("#habitsEmpty").hidden = false;
@@ -633,7 +641,7 @@ function renderHabits() {
   $("#habitsEmpty").hidden = true;
   grid.parentElement.style.display = "";
 
-  const days = currentMonthDays();
+  const days = monthDays(state.habitYear, state.habitMonth);
 
   // ヘッダー行
   const thead = document.createElement("thead");
@@ -965,6 +973,22 @@ function setView(view) {
 
 $$("#tabs .tab").forEach((tab) => {
   tab.addEventListener("click", () => setView(tab.dataset.view));
+});
+
+// 月ナビ
+function shiftHabitMonth(delta) {
+  const d = new Date(state.habitYear, state.habitMonth + delta, 1);
+  state.habitYear = d.getFullYear();
+  state.habitMonth = d.getMonth();
+  renderHabits();
+}
+$("#prevMonthBtn").addEventListener("click", () => shiftHabitMonth(-1));
+$("#nextMonthBtn").addEventListener("click", () => shiftHabitMonth(1));
+$("#thisMonthBtn").addEventListener("click", () => {
+  const now = new Date();
+  state.habitYear = now.getFullYear();
+  state.habitMonth = now.getMonth();
+  renderHabits();
 });
 
 // ---------- 追加ボタン・ショートカット ----------

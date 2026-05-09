@@ -820,3 +820,44 @@ main { padding-bottom: 96px !important; }
 .cinnamon-status[data-kind="ok"] { background: #d6f5e0; color: #2f7a4a; }
 .cinnamon-status[data-kind="sync"] { background: var(--pink-soft); color: #8a395f; }
 .cinnamon-status[data-kind="err"] { background: #ffd0d8; color: #b03a5b; }
+
+/* 月ナビ */
+.month-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.month-nav h2 {
+  margin: 0;
+  font-size: 17px;
+  min-width: 110px;
+}
+.month-nav .icon-btn { font-size: 14px; color: var(--ink-soft); }
+.month-nav .icon-btn:hover { background: var(--bg-2); }
+.this-month-btn {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--pink-soft);
+  color: #8a395f;
+  margin-left: auto;
+  box-shadow: none;
+}
+
+/* シナモン連携の小さい状態表示（最下部） */
+.bridge-status-mini {
+  margin: 16px 0 4px;
+  padding: 0;
+  font-size: 10px;
+  color: var(--ink-soft);
+  opacity: .55;
+  text-align: center;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+}
+.bridge-status-mini[data-kind="err"] {
+  opacity: 1;
+  color: #b03a5b;
+  font-weight: 600;
+}
+.bridge-status-mini[data-kind="none"] { display: none; }

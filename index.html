@@ -93,8 +93,12 @@
 
     <section id="habitsView" class="view" hidden>
       <div class="habits-meta">
-        <h2 class="habits-month" id="habitsMonth">Daily Habit</h2>
-        <p class="cinnamon-status" id="cinnamonStatus" data-kind="none">🥗 待機中…</p>
+        <div class="month-nav">
+          <button type="button" class="icon-btn" id="prevMonthBtn" aria-label="前の月">◀</button>
+          <h2 class="habits-month" id="habitsMonth">Daily Habit</h2>
+          <button type="button" class="icon-btn" id="nextMonthBtn" aria-label="次の月">▶</button>
+          <button type="button" id="thisMonthBtn" class="this-month-btn" hidden>今月へ</button>
+        </div>
         <p class="legend">
           タップで切替:
           <span class="cell-demo" data-pct="0"></span>0
@@ -111,6 +115,7 @@
       <p id="habitsEmpty" class="empty-state" hidden>
         まだ習慣がありません。「＋ 新しい習慣」から追加してください ♡
       </p>
+      <p class="bridge-status-mini" id="cinnamonStatus" data-kind="none">🥗 待機中…</p>
     </section>
   </main>
 

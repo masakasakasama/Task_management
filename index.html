@@ -25,11 +25,6 @@
     </div>
   </header>
 
-  <nav class="tabs" id="tabs">
-    <button class="tab active" data-view="tasks">📝 タスク</button>
-    <button class="tab" data-view="habits">⭐ Daily</button>
-  </nav>
-
   <main>
     <section id="tasksView" class="view">
       <section class="filters">
@@ -141,6 +136,27 @@
       </footer>
     </form>
   </dialog>
+
+  <!-- 進捗% ピッカー -->
+  <dialog id="pctPicker" class="modal pct-picker">
+    <div class="pct-picker-inner">
+      <div class="pct-picker-title" id="pctPickerTitle">進捗を選択</div>
+      <div class="pct-options">
+        <button type="button" data-pct="0" class="pct-opt"><span class="dot" data-pct="0"></span><span>0</span></button>
+        <button type="button" data-pct="20" class="pct-opt"><span class="dot" data-pct="20"></span><span>20</span></button>
+        <button type="button" data-pct="40" class="pct-opt"><span class="dot" data-pct="40"></span><span>40</span></button>
+        <button type="button" data-pct="60" class="pct-opt"><span class="dot" data-pct="60"></span><span>60</span></button>
+        <button type="button" data-pct="80" class="pct-opt"><span class="dot" data-pct="80"></span><span>80</span></button>
+        <button type="button" data-pct="100" class="pct-opt"><span class="dot" data-pct="100"></span><span>✓</span></button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 下部タブナビ -->
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-view="tasks">📝 タスク</button>
+    <button class="tab" data-view="habits">⭐ Daily</button>
+  </nav>
 
   <!-- 習慣編集モーダル -->
   <dialog id="habitEditor" class="modal">

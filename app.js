@@ -588,24 +588,54 @@ function renderHabits() {
   });
 }
 
+// 進捗ピッカー
+const pctPicker = $("#pctPicker");
+let pickingHabitId = null;
+let pickingDateKey = null;
+let pickingCell = null;
+
 function onHabitCellClick(habitId, dateKey, cell) {
+  pickingHabitId = habitId;
+  pickingDateKey = dateKey;
+  pickingCell = cell;
+  const h = state.habits.find((x) => x.id === habitId);
+  const day = dateKey.slice(8);
+  const habitName = h ? `${h.emoji || ""} ${h.name}` : "";
+  $("#pctPickerTitle").textContent = `${day}日  ${habitName}`;
+  pctPicker.showModal();
+}
+
+pctPicker.addEventListener("click", (e) => {
+  // 背景クリックで閉じる
+  if (e.target === pctPicker) {
+    pctPicker.close();
+    return;
+  }
+  const opt = e.target.closest(".pct-opt");
+  if (!opt) return;
+  const pct = Number(opt.dataset.pct);
+  setHabitEntry(pickingHabitId, pickingDateKey, pct, pickingCell);
+  pctPicker.close();
+});
+
+function setHabitEntry(habitId, dateKey, pct, cell) {
   const h = state.habits.find((x) => x.id === habitId);
   if (!h) return;
-  const cur = (h.entries && h.entries[dateKey]) || 0;
-  const next = cyclePct(cur);
   h.entries = h.entries || {};
   h.entryUpdatedAt = h.entryUpdatedAt || {};
-  if (next === 0) {
+  if (pct === 0) {
     delete h.entries[dateKey];
   } else {
-    h.entries[dateKey] = next;
+    h.entries[dateKey] = pct;
   }
   h.entryUpdatedAt[dateKey] = Date.now();
   h.updatedAt = Date.now();
-  cell.dataset.pct = next;
-  cell.querySelector(".pct").textContent = next === 100 ? "✓" : next ? next : "";
-  cell.classList.add("just-tapped");
-  setTimeout(() => cell.classList.remove("just-tapped"), 250);
+  if (cell) {
+    cell.dataset.pct = pct;
+    cell.textContent = pct === 100 ? "✓" : pct ? pct : "";
+    cell.classList.add("just-tapped");
+    setTimeout(() => cell.classList.remove("just-tapped"), 250);
+  }
   saveAll(false);
 }
 
@@ -760,7 +790,29 @@ function init() {
   setSyncStatus("sync", "同期接続中…");
   reconnectSync();
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    let reloading = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloading) return;
+      reloading = true;
+      window.location.reload();
+    });
+    navigator.serviceWorker
+      .register("./sw.js")
+      .then((reg) => {
+        reg.addEventListener("updatefound", () => {
+          const installing = reg.installing;
+          if (!installing) return;
+          installing.addEventListener("statechange", () => {
+            if (
+              installing.state === "installed" &&
+              navigator.serviceWorker.controller
+            ) {
+              installing.postMessage({ type: "SKIP_WAITING" });
+            }
+          });
+        });
+      })
+      .catch(() => {});
   }
 }
 

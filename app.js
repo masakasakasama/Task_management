@@ -4,6 +4,7 @@
 // - タスク + Daily 習慣の2機能
 
 import { startSync, stopSync, isSyncActive } from "./sync.js";
+import { startCinnamonBridge } from "./cinnamon-bridge.js";
 
 const STORAGE_KEY = "fuwatto_tasks_v1";
 const VIEW_KEY = "fuwatto_view_v1";
@@ -136,9 +137,44 @@ function normalizeTask(t) {
     priority: ["low", "mid", "high"].includes(t.priority) ? t.priority : "mid",
     status: ["todo", "doing", "done"].includes(t.status) ? t.status : "todo",
     tags: Array.isArray(t.tags) ? t.tags.filter(Boolean) : [],
+    subtasks: Array.isArray(t.subtasks)
+      ? t.subtasks
+          .filter((s) => s && typeof s.text === "string")
+          .map((s) => ({ id: s.id || uid(), text: s.text, done: !!s.done }))
+      : [],
     createdAt: typeof t.createdAt === "number" ? t.createdAt : Date.now(),
     updatedAt: typeof t.updatedAt === "number" ? t.updatedAt : Date.now(),
   };
+}
+
+function calcSubProgress(task) {
+  if (!task.subtasks || task.subtasks.length === 0) return null;
+  const done = task.subtasks.filter((s) => s.done).length;
+  return { done, total: task.subtasks.length, pct: Math.round((done / task.subtasks.length) * 100) };
+}
+
+function calculateStreak(habit) {
+  let streak = 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tk = todayKey();
+  let i = 0;
+  if ((habit.entries || {})[tk] > 0) {
+    streak = 1;
+    i = 1;
+  } else {
+    i = 1;
+  }
+  while (true) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const key = dateKey(d);
+    const v = (habit.entries || {})[key] || 0;
+    if (v > 0) streak++;
+    else break;
+    i++;
+  }
+  return streak;
 }
 
 function normalizeHabit(h) {
@@ -258,6 +294,13 @@ function renderCard(task) {
     .filter(Boolean)
     .map((t) => `<span class="chip tag">#${escapeHtml(t)}</span>`)
     .join("");
+  const sub = calcSubProgress(task);
+  const subHtml = sub
+    ? `<span class="chip"><span style="margin-right:4px">☑</span>${sub.done}/${sub.total}</span>`
+    : "";
+  const progressHtml = sub
+    ? `<div class="progress"><div style="width:${sub.pct}%"></div></div>`
+    : "";
 
   el.innerHTML = `
     <div class="quick">
@@ -270,8 +313,10 @@ function renderCard(task) {
     <div class="meta">
       <span class="chip priority ${task.priority}">${priorityLabel(task.priority)}</span>
       ${dl ? `<span class="chip deadline ${dl.cls}">⏰ ${escapeHtml(dl.label)}</span>` : ""}
+      ${subHtml}
       ${tagsHtml}
     </div>
+    ${progressHtml}
   `;
 
   el.addEventListener("click", (e) => {
@@ -380,9 +425,90 @@ function openEditor(id) {
   $("#f-priority").value = task.priority;
   $("#f-status").value = task.status;
   $("#f-tags").value = (task.tags || []).join(", ");
+  renderSubtasksInEditor(task);
   editor.showModal();
   setTimeout(() => $("#f-title").focus(), 30);
 }
+
+function renderSubtasksInEditor(task) {
+  const list = $("#subtaskList");
+  list.innerHTML = "";
+  for (const sub of task.subtasks || []) {
+    list.appendChild(renderSubtaskItem(task.id, sub));
+  }
+}
+
+function renderSubtaskItem(taskId, sub) {
+  const li = document.createElement("li");
+  li.className = sub.done ? "done" : "";
+  li.dataset.subId = sub.id;
+  li.innerHTML = `
+    <button type="button" class="check" aria-label="完了切替">${sub.done ? "✓" : ""}</button>
+    <span class="text" contenteditable="true" spellcheck="false"></span>
+    <button type="button" class="del" aria-label="削除">✕</button>
+  `;
+  li.querySelector(".text").textContent = sub.text;
+  li.querySelector(".check").addEventListener("click", () => {
+    const t = state.tasks.find((x) => x.id === taskId);
+    if (!t) return;
+    const s = t.subtasks.find((x) => x.id === sub.id);
+    if (!s) return;
+    s.done = !s.done;
+    li.className = s.done ? "done" : "";
+    li.querySelector(".check").textContent = s.done ? "✓" : "";
+    t.updatedAt = Date.now();
+    saveAll(false);
+  });
+  li.querySelector(".del").addEventListener("click", () => {
+    const t = state.tasks.find((x) => x.id === taskId);
+    if (!t) return;
+    t.subtasks = t.subtasks.filter((x) => x.id !== sub.id);
+    t.updatedAt = Date.now();
+    li.remove();
+    saveAll(false);
+  });
+  li.querySelector(".text").addEventListener("blur", (e) => {
+    const t = state.tasks.find((x) => x.id === taskId);
+    if (!t) return;
+    const s = t.subtasks.find((x) => x.id === sub.id);
+    if (!s) return;
+    const newText = e.target.textContent.trim();
+    if (newText === s.text) return;
+    if (!newText) {
+      // 空にしたら削除
+      t.subtasks = t.subtasks.filter((x) => x.id !== sub.id);
+      li.remove();
+    } else {
+      s.text = newText;
+    }
+    t.updatedAt = Date.now();
+    saveAll(false);
+  });
+  li.querySelector(".text").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.target.blur();
+      $("#newSubtaskInput").focus();
+    }
+  });
+  return li;
+}
+
+$("#newSubtaskInput").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  const text = e.target.value.trim();
+  if (!text || !state.editingId) return;
+  const t = state.tasks.find((x) => x.id === state.editingId);
+  if (!t) return;
+  const sub = { id: uid(), text, done: false };
+  t.subtasks = t.subtasks || [];
+  t.subtasks.push(sub);
+  t.updatedAt = Date.now();
+  $("#subtaskList").appendChild(renderSubtaskItem(t.id, sub));
+  e.target.value = "";
+  saveAll(false);
+});
 
 function closeEditor() {
   if (editor.open) editor.close();
@@ -525,9 +651,14 @@ function renderHabits() {
     label.className = "habit-label";
     label.dataset.id = h.id;
     label.setAttribute("aria-label", `${h.name} を編集`);
+    const streak = calculateStreak(h);
+    const streakHtml = streak > 0
+      ? `<span class="streak ${streak >= 7 ? "hot" : ""}">🔥${streak}</span>`
+      : "";
     label.innerHTML = `
       <span class="emoji">${escapeHtml(h.emoji || "⭐")}</span>
       <span class="name">${escapeHtml(h.name || "(名称未設定)")}</span>
+      ${streakHtml}
     `;
     th.appendChild(label);
     trh.appendChild(th);
@@ -586,6 +717,109 @@ function renderHabits() {
       wrap.scrollTop = Math.max(0, offset);
     }
   });
+}
+
+// ---------- 今日ビュー ----------
+
+function renderToday() {
+  const today = new Date();
+  const tk = todayKey();
+  const dateLabel = today.toLocaleDateString("ja-JP", {
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+  });
+  $("#todayDate").textContent = dateLabel;
+
+  // 今日のタスク: 期限が今日以前 + 未完 / または status=doing
+  const startOfTomorrow = new Date(today);
+  startOfTomorrow.setHours(0, 0, 0, 0);
+  startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+  const todayTasks = state.tasks.filter((t) => {
+    if (t.status === "done") return false;
+    if (t.status === "doing") return true;
+    if (!t.deadline) return false;
+    const d = new Date(t.deadline);
+    return d.getTime() < startOfTomorrow.getTime();
+  });
+  todayTasks.sort((a, b) => {
+    const av = a.deadline ? new Date(a.deadline).getTime() : Infinity;
+    const bv = b.deadline ? new Date(b.deadline).getTime() : Infinity;
+    if (av !== bv) return av - bv;
+    return priorityRank(a.priority) - priorityRank(b.priority);
+  });
+
+  $("#todayTaskCount").textContent = todayTasks.length;
+  const taskList = $("#todayTaskList");
+  taskList.innerHTML = "";
+  $("#todayTaskEmpty").hidden = todayTasks.length > 0;
+  for (const t of todayTasks) {
+    const row = document.createElement("div");
+    row.className = "today-task-row" + (t.status === "done" ? " done" : "");
+    const dl = fmtDeadline(t.deadline);
+    const sub = calcSubProgress(t);
+    const subHtml = sub ? ` ☑${sub.done}/${sub.total}` : "";
+    row.innerHTML = `
+      <button type="button" class="check" aria-label="完了切替">${t.status === "done" ? "✓" : ""}</button>
+      <div style="flex:1;min-width:0">
+        <div class="title">${escapeHtml(t.title || "(タイトルなし)")}</div>
+        <div class="meta-line">
+          <span class="chip priority ${t.priority}">${priorityLabel(t.priority).replace("優先度: ","")}</span>
+          ${dl ? `<span class="chip deadline ${dl.cls}">⏰ ${escapeHtml(dl.label)}</span>` : ""}
+          ${subHtml ? `<span>${subHtml}</span>` : ""}
+        </div>
+      </div>
+    `;
+    row.querySelector(".check").addEventListener("click", (e) => {
+      e.stopPropagation();
+      const tt = state.tasks.find((x) => x.id === t.id);
+      if (!tt) return;
+      tt.status = tt.status === "done" ? "todo" : "done";
+      tt.updatedAt = Date.now();
+      saveAll();
+      renderToday();
+      render();
+    });
+    row.addEventListener("click", () => openEditor(t.id));
+    taskList.appendChild(row);
+  }
+
+  // 今日の習慣
+  const habitList = $("#todayHabitList");
+  habitList.innerHTML = "";
+  const totalHabits = state.habits.length;
+  const doneToday = state.habits.filter((h) => ((h.entries || {})[tk] || 0) > 0).length;
+  $("#todayHabitCount").textContent = totalHabits === 0 ? "0" : `${doneToday}/${totalHabits}`;
+  $("#todayHabitEmpty").hidden = totalHabits > 0;
+
+  for (const h of state.habits) {
+    const pct = (h.entries || {})[tk] || 0;
+    const streak = calculateStreak(h);
+    const streakHtml = streak > 0
+      ? `<span class="streak ${streak >= 7 ? "hot" : ""}">🔥 ${streak}日</span>`
+      : "";
+    const row = document.createElement("div");
+    row.className = "today-habit-row";
+    row.innerHTML = `
+      <div class="habit-name">
+        <span>${escapeHtml(h.emoji || "⭐")}</span>
+        <span>${escapeHtml(h.name)}</span>
+        ${streakHtml}
+      </div>
+      <button type="button" class="big-cell" data-pct="${pct}">${pct === 100 ? "✓" : pct ? pct : "—"}</button>
+    `;
+    row.querySelector(".big-cell").addEventListener("click", () => {
+      onHabitCellClick(h.id, tk, row.querySelector(".big-cell"));
+    });
+    habitList.appendChild(row);
+  }
+
+  // 今日サマリ
+  const taskDoneToday = state.tasks.filter(
+    (t) => t.status === "done" && t.updatedAt && new Date(t.updatedAt).toDateString() === today.toDateString()
+  ).length;
+  $("#todaySummary").textContent =
+    `タスク ${todayTasks.length}件 残り ・ 今日完了 ${taskDoneToday}件 ・ 習慣 ${doneToday}/${totalHabits}`;
 }
 
 // 進捗ピッカー
@@ -715,7 +949,9 @@ $("#deleteHabitBtn").addEventListener("click", () => {
 // ---------- タブ切替 ----------
 
 function setView(view) {
+  if (!["today", "tasks", "habits"].includes(view)) view = "today";
   state.view = view;
+  $("#todayView").hidden = view !== "today";
   $("#tasksView").hidden = view !== "tasks";
   $("#habitsView").hidden = view !== "habits";
   $$("#tabs .tab").forEach((t) =>
@@ -723,6 +959,7 @@ function setView(view) {
   );
   $("#addBtn").textContent = view === "habits" ? "＋ 新しい習慣" : "＋ 新しいタスク";
   localStorage.setItem(VIEW_KEY, view);
+  if (view === "today") renderToday();
   if (view === "habits") renderHabits();
 }
 
@@ -767,6 +1004,7 @@ async function reconnectSync() {
         );
         render();
         renderHabits();
+        renderToday();
         setSyncStatus("ok", "同期済み");
       },
       onStatus: (kind, msg) => setSyncStatus(kind, msg),
@@ -779,16 +1017,51 @@ async function reconnectSync() {
 
 // ---------- 起動 ----------
 
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  const btn = $("#themeBtn");
+  if (btn) btn.textContent = theme === "dark" ? "☀️" : "🌙";
+  localStorage.setItem("fuwatto_theme_v1", theme);
+}
+
 function init() {
+  // テーマ初期化（保存値 → OS 設定 → light）
+  const savedTheme = localStorage.getItem("fuwatto_theme_v1");
+  const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  applyTheme(savedTheme || (prefersDark ? "dark" : "light"));
+  $("#themeBtn").addEventListener("click", () => {
+    applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+  });
+
   const saved = loadAll();
   state.tasks = saved.tasks.map(normalizeTask);
   state.habits = saved.habits.map(normalizeHabit);
-  const savedView = localStorage.getItem(VIEW_KEY);
-  setView(savedView === "habits" ? "habits" : "tasks");
+  const savedView = localStorage.getItem(VIEW_KEY) || "today";
+  setView(savedView);
   render();
   renderHabits();
+  renderToday();
   setSyncStatus("sync", "同期接続中…");
   reconnectSync();
+
+  // cinnamon-workout 連携: 完了検知 → ワークアウト習慣を100%に
+  startCinnamonBridge((nameKeywords, dateKey) => {
+    const target = state.habits.find((h) =>
+      nameKeywords.some((k) => (h.name || "").toLowerCase().includes(k.toLowerCase()))
+    );
+    if (!target) return;
+    target.entries = target.entries || {};
+    target.entryUpdatedAt = target.entryUpdatedAt || {};
+    if (target.entries[dateKey] === 100) return; // 既に100%なら何もしない
+    target.entries[dateKey] = 100;
+    target.entryUpdatedAt[dateKey] = Date.now();
+    target.updatedAt = Date.now();
+    saveAll(false);
+    renderHabits();
+    renderToday();
+    toast(`💪 ${target.name} 完了！`);
+  });
+
   if ("serviceWorker" in navigator) {
     let reloading = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => {

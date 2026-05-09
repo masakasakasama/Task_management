@@ -1,12 +1,13 @@
 // 常に最新を取りに行く Service Worker (network-first)
 // オフライン時のみキャッシュを使う
-const CACHE = "fuwatto-v3";
+const CACHE = "fuwatto-v4";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
   "./sync.js",
+  "./cinnamon-bridge.js",
   "./manifest.webmanifest",
   "./icon.svg",
 ];

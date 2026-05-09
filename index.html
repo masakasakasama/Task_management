@@ -21,12 +21,38 @@
       <span id="syncText">読み込み中…</span>
     </div>
     <div class="actions">
+      <button id="themeBtn" class="icon-btn" title="テーマ切替" aria-label="テーマ切替">🌙</button>
       <button id="addBtn" class="primary">＋ 新しいタスク</button>
     </div>
   </header>
 
   <main>
-    <section id="tasksView" class="view">
+    <section id="todayView" class="view">
+      <header class="today-header">
+        <h2 id="todayDate">—</h2>
+        <p id="todaySummary" class="today-summary"></p>
+      </header>
+
+      <section class="today-block">
+        <div class="block-head">
+          <h3>🎯 今日のタスク</h3>
+          <span class="count" id="todayTaskCount">0</span>
+        </div>
+        <div id="todayTaskList" class="today-task-list"></div>
+        <p id="todayTaskEmpty" class="empty-mini" hidden>今日が期限のタスクはありません ✨</p>
+      </section>
+
+      <section class="today-block">
+        <div class="block-head">
+          <h3>⭐ 今日の習慣</h3>
+          <span class="count" id="todayHabitCount">0</span>
+        </div>
+        <div id="todayHabitList" class="today-habit-list"></div>
+        <p id="todayHabitEmpty" class="empty-mini" hidden>習慣がまだありません。Daily タブから追加してください</p>
+      </section>
+    </section>
+
+    <section id="tasksView" class="view" hidden>
       <section class="filters">
         <input id="searchInput" type="search" placeholder="🔍 タイトル・詳細・タグで検索…" />
         <select id="filterStatus">
@@ -128,6 +154,11 @@
         <span>タグ（カンマ区切り）</span>
         <input id="f-tags" type="text" placeholder="例: 会議, 資料, クライアントA" />
       </label>
+      <label>
+        <span>サブタスク</span>
+        <ul id="subtaskList" class="subtask-list"></ul>
+        <input id="newSubtaskInput" type="text" placeholder="チェック項目を追加して Enter…" />
+      </label>
       <footer class="editor-footer">
         <button type="button" id="deleteBtn" class="danger">🗑 削除</button>
         <div class="grow"></div>
@@ -154,7 +185,8 @@
 
   <!-- 下部タブナビ -->
   <nav class="tabs" id="tabs">
-    <button class="tab active" data-view="tasks">📝 タスク</button>
+    <button class="tab active" data-view="today">🌅 今日</button>
+    <button class="tab" data-view="tasks">📝 タスク</button>
     <button class="tab" data-view="habits">⭐ Daily</button>
   </nav>
 

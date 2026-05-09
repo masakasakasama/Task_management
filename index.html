@@ -25,43 +25,71 @@
     </div>
   </header>
 
-  <section class="filters">
-    <input id="searchInput" type="search" placeholder="🔍 タイトル・詳細・タグで検索…" />
-    <select id="filterStatus">
-      <option value="all">すべての状態</option>
-      <option value="todo">未着手</option>
-      <option value="doing">進行中</option>
-      <option value="done">完了</option>
-    </select>
-    <select id="filterPriority">
-      <option value="all">すべての優先度</option>
-      <option value="high">高</option>
-      <option value="mid">中</option>
-      <option value="low">低</option>
-    </select>
-    <select id="sortBy">
-      <option value="deadline">期限が近い順</option>
-      <option value="priority">優先度が高い順</option>
-      <option value="created">作成が新しい順</option>
-      <option value="updated">更新が新しい順</option>
-    </select>
-  </section>
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-view="tasks">📝 タスク</button>
+    <button class="tab" data-view="habits">⭐ Daily</button>
+  </nav>
 
   <main>
-    <div class="board" id="board">
-      <div class="column" data-status="todo">
-        <h2>📝 未着手 <span class="count" id="count-todo">0</span></h2>
-        <div class="cards" id="col-todo"></div>
+    <section id="tasksView" class="view">
+      <section class="filters">
+        <input id="searchInput" type="search" placeholder="🔍 タイトル・詳細・タグで検索…" />
+        <select id="filterStatus">
+          <option value="all">すべての状態</option>
+          <option value="todo">未着手</option>
+          <option value="doing">進行中</option>
+          <option value="done">完了</option>
+        </select>
+        <select id="filterPriority">
+          <option value="all">すべての優先度</option>
+          <option value="high">高</option>
+          <option value="mid">中</option>
+          <option value="low">低</option>
+        </select>
+        <select id="sortBy">
+          <option value="deadline">期限が近い順</option>
+          <option value="priority">優先度が高い順</option>
+          <option value="created">作成が新しい順</option>
+          <option value="updated">更新が新しい順</option>
+        </select>
+      </section>
+
+      <div class="board" id="board">
+        <div class="column" data-status="todo">
+          <h2>📝 未着手 <span class="count" id="count-todo">0</span></h2>
+          <div class="cards" id="col-todo"></div>
+        </div>
+        <div class="column" data-status="doing">
+          <h2>✨ 進行中 <span class="count" id="count-doing">0</span></h2>
+          <div class="cards" id="col-doing"></div>
+        </div>
+        <div class="column" data-status="done">
+          <h2>🌸 完了 <span class="count" id="count-done">0</span></h2>
+          <div class="cards" id="col-done"></div>
+        </div>
       </div>
-      <div class="column" data-status="doing">
-        <h2>✨ 進行中 <span class="count" id="count-doing">0</span></h2>
-        <div class="cards" id="col-doing"></div>
+    </section>
+
+    <section id="habitsView" class="view" hidden>
+      <div class="habits-meta">
+        <h2 class="habits-month" id="habitsMonth">Daily Habit</h2>
+        <p class="legend">
+          タップで切替:
+          <span class="cell-demo" data-pct="0"></span>0
+          <span class="cell-demo" data-pct="20"></span>20
+          <span class="cell-demo" data-pct="40"></span>40
+          <span class="cell-demo" data-pct="60"></span>60
+          <span class="cell-demo" data-pct="80"></span>80
+          <span class="cell-demo" data-pct="100"></span>✓
+        </p>
       </div>
-      <div class="column" data-status="done">
-        <h2>🌸 完了 <span class="count" id="count-done">0</span></h2>
-        <div class="cards" id="col-done"></div>
+      <div class="habits-grid-wrap">
+        <table class="habits-grid" id="habitsGrid"></table>
       </div>
-    </div>
+      <p id="habitsEmpty" class="empty-state" hidden>
+        まだ習慣がありません。「＋ 新しい習慣」から追加してください ♡
+      </p>
+    </section>
   </main>
 
   <!-- 編集モーダル -->
@@ -109,6 +137,32 @@
         <button type="button" id="deleteBtn" class="danger">🗑 削除</button>
         <div class="grow"></div>
         <button type="button" id="cancelBtn">キャンセル</button>
+        <button type="submit" class="primary">💾 保存</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- 習慣編集モーダル -->
+  <dialog id="habitEditor" class="modal">
+    <form method="dialog" id="habitEditorForm">
+      <header>
+        <h2 id="habitEditorTitle">習慣を編集</h2>
+        <button type="button" class="icon-btn" id="closeHabitEditor" aria-label="閉じる">✕</button>
+      </header>
+      <div class="row habit-row-top">
+        <label>
+          <span>絵文字</span>
+          <input id="h-emoji" type="text" maxlength="4" placeholder="💪" />
+        </label>
+        <label class="grow-2">
+          <span>名前</span>
+          <input id="h-name" type="text" required maxlength="60" placeholder="例: ワークアウト・水を飲む・読書" />
+        </label>
+      </div>
+      <footer class="editor-footer">
+        <button type="button" id="deleteHabitBtn" class="danger">🗑 削除</button>
+        <div class="grow"></div>
+        <button type="button" id="cancelHabitBtn">キャンセル</button>
         <button type="submit" class="primary">💾 保存</button>
       </footer>
     </form>

@@ -63,12 +63,18 @@ function calcProgress(byDayToday, targets) {
 
 /**
  * @param {(nameKeywords: string[], progressByDate: Record<string, number>) => void} onProgress
- *   キー: YYYY-MM-DD、値: 0/20/40/60/80/100 の達成率
+ * @param {(status: {kind: "ok"|"sync"|"err"|"none", text: string}) => void} [onStatus]
  */
-export function startCinnamonBridge(onProgress) {
+export function startCinnamonBridge(onProgress, onStatus) {
+  const setStatus = (kind, text) => onStatus && onStatus({ kind, text });
   if (started) return;
-  if (!cinnamonConfig.apiKey || !cinnamonConfig.projectId) return;
+  if (!cinnamonConfig.apiKey || !cinnamonConfig.projectId) {
+    setStatus("none", "シナモン未設定");
+    return;
+  }
   started = true;
+  setStatus("sync", "シナモン接続中…");
+  console.log("[cinnamon-bridge] starting...");
 
   try {
     const app =
@@ -80,7 +86,11 @@ export function startCinnamonBridge(onProgress) {
     onSnapshot(
       docRef,
       (snap) => {
-        if (!snap.exists()) return;
+        if (!snap.exists()) {
+          setStatus("err", "シナモン: ドキュメント無し");
+          console.warn("[cinnamon-bridge] doc not found");
+          return;
+        }
         const data = snap.data();
         const targets = data.targets;
         const byDay = data.byDay || {};
@@ -88,11 +98,23 @@ export function startCinnamonBridge(onProgress) {
         for (const dateKey of Object.keys(byDay)) {
           progressByDate[dateKey] = calcProgress(byDay[dateKey], targets);
         }
+        const dates = Object.keys(progressByDate).sort();
+        console.log("[cinnamon-bridge] received progress:", progressByDate);
         onProgress(WORKOUT_HABIT_KEYWORDS, progressByDate);
+        const last = dates[dates.length - 1];
+        if (last) {
+          setStatus("ok", `シナモン: ${dates.length}日分反映 (最新 ${last.slice(5)} ${progressByDate[last]}%)`);
+        } else {
+          setStatus("ok", "シナモン: データなし");
+        }
       },
-      (err) => console.warn("[cinnamon-bridge] snapshot err:", err)
+      (err) => {
+        console.warn("[cinnamon-bridge] snapshot err:", err);
+        setStatus("err", "シナモン: " + (err.code || err.message || "エラー"));
+      }
     );
   } catch (err) {
     console.warn("[cinnamon-bridge] setup err:", err);
+    setStatus("err", "シナモン: 初期化失敗 " + (err.message || err));
   }
 }

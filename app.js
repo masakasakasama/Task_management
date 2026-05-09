@@ -1044,32 +1044,47 @@ function init() {
   reconnectSync();
 
   // cinnamon-workout 連携: 過去〜今日の達成率をワークアウト習慣に反映
-  startCinnamonBridge((nameKeywords, progressByDate) => {
-    const target = state.habits.find((h) =>
-      nameKeywords.some((k) => (h.name || "").toLowerCase().includes(k.toLowerCase()))
-    );
-    if (!target) return; // 対象の習慣がDailyに無い
-    target.entries = target.entries || {};
-    target.entryUpdatedAt = target.entryUpdatedAt || {};
-    let changed = false;
-    let newlyComplete = false;
-    const tk = todayKey();
-    for (const [dateKey, pct] of Object.entries(progressByDate)) {
-      const current = target.entries[dateKey] || 0;
-      if (pct <= current) continue; // 手動で上回ってる場合は下げない
-      if (dateKey === tk && pct === 100 && current < 100) newlyComplete = true;
-      target.entries[dateKey] = pct;
-      target.entryUpdatedAt[dateKey] = Date.now();
-      changed = true;
+  startCinnamonBridge(
+    (nameKeywords, progressByDate) => {
+      const target = state.habits.find((h) =>
+        nameKeywords.some((k) => (h.name || "").toLowerCase().includes(k.toLowerCase()))
+      );
+      const badge = $("#cinnamonStatus");
+      if (!target) {
+        if (badge) {
+          badge.dataset.kind = "err";
+          badge.textContent = "🥗 シナモン: 「ワークアウト」習慣が見つからない";
+        }
+        return;
+      }
+      target.entries = target.entries || {};
+      target.entryUpdatedAt = target.entryUpdatedAt || {};
+      let changed = false;
+      let newlyComplete = false;
+      const tk = todayKey();
+      for (const [dateKey, pct] of Object.entries(progressByDate)) {
+        const current = target.entries[dateKey] || 0;
+        if (pct <= current) continue;
+        if (dateKey === tk && pct === 100 && current < 100) newlyComplete = true;
+        target.entries[dateKey] = pct;
+        target.entryUpdatedAt[dateKey] = Date.now();
+        changed = true;
+      }
+      if (changed) {
+        target.updatedAt = Date.now();
+        saveAll(false);
+        renderHabits();
+        renderToday();
+        if (newlyComplete) toast(`💪 ${target.name} 達成！🎉`);
+      }
+    },
+    (status) => {
+      const badge = $("#cinnamonStatus");
+      if (!badge) return;
+      badge.dataset.kind = status.kind;
+      badge.textContent = "🥗 " + status.text;
     }
-    if (changed) {
-      target.updatedAt = Date.now();
-      saveAll(false);
-      renderHabits();
-      renderToday();
-      if (newlyComplete) toast(`💪 ${target.name} 達成！🎉`);
-    }
-  });
+  );
 
   if ("serviceWorker" in navigator) {
     let reloading = false;

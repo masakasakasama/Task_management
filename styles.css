@@ -806,3 +806,17 @@ main { padding-bottom: 96px !important; }
 
 /* テーマトグルアニメ */
 #themeBtn { font-size: 18px; }
+
+/* シナモン連携ステータスバッジ */
+.cinnamon-status {
+  margin: 4px 0 0;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  display: inline-block;
+  background: var(--bg-2);
+  color: var(--ink-soft);
+}
+.cinnamon-status[data-kind="ok"] { background: #d6f5e0; color: #2f7a4a; }
+.cinnamon-status[data-kind="sync"] { background: var(--pink-soft); color: #8a395f; }
+.cinnamon-status[data-kind="err"] { background: #ffd0d8; color: #b03a5b; }

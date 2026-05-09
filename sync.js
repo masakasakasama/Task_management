@@ -1,21 +1,39 @@
-// GitHub Gist による同期モジュール
-// - 個人用アクセストークン (PAT) を1つ入れるだけで動く
-// - 初回起動時に Private Gist を自動作成し、以後はそこを読み書き
-// - 他端末で同じ PAT を入れれば、description マーカーで自動発見
-// - ローカル変更は debounce して PATCH、リモート変更は polling で取得しマージ
-// - updatedAt が新しい方を優先する safe マージ
+// Firestore による全端末同期
+// - Firebase 設定と SPACE_ID をハードコード
+// - 同じURLを開いた端末はすべて同じドキュメントを読み書き
+// - 認証なし、トークンなし、入力欄なし
+// - セキュリティ: Firestore ルールで「24文字以上のドキュメントID」のみ許可
 
-const GIST_DESCRIPTION = "fuwatto-task-data (do not edit manually)";
-const FILENAME = "tasks.json";
-const POLL_MS = 12000; // 12秒。GitHub API のレートリミットに優しい
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+import {
+  getFirestore,
+  doc,
+  onSnapshot,
+  setDoc,
+  getDoc,
+} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
-let active = false;
-let pollTimer = null;
+const firebaseConfig = {
+  apiKey: "AIzaSyAvxleNWQEtIP1I7WimhI5-X-6oVtcAw0I",
+  authDomain: "task-management-5c55f.firebaseapp.com",
+  projectId: "task-management-5c55f",
+  storageBucket: "task-management-5c55f.firebasestorage.app",
+  messagingSenderId: "748379281870",
+  appId: "1:748379281870:web:83040bb9fbab9fe34bf39f",
+};
+
+// 24文字以上必須・公開だが推測困難な長さ・運用者が把握できる命名
+const COLLECTION = "spaces";
+const SPACE_ID = "masakasakasama-task-management-2026-private-space";
+
+let app = null;
+let db = null;
+let docRef = null;
+let unsub = null;
 let pushTimer = null;
-let lastEtag = null;
+let active = false;
 let lastRemoteHash = "";
-let currentToken = null;
-let currentGistId = null;
+
 let getTasksRef = null;
 let onRemoteRef = null;
 let onStatusRef = null;
@@ -24,67 +42,69 @@ export function isSyncActive() {
   return active;
 }
 
-export async function startSync({ token, gistId, getTasks, onRemote, onStatus, onGistIdChange }) {
+export async function startSync({ getTasks, onRemote, onStatus }) {
   stopSync();
-  if (!token) throw new Error("GitHub トークンが未設定です");
-
-  currentToken = token;
   getTasksRef = getTasks;
   onRemoteRef = onRemote;
   onStatusRef = onStatus;
 
+  app = initializeApp(firebaseConfig);
+  db = getFirestore(app);
+  docRef = doc(db, COLLECTION, SPACE_ID);
+
   onStatus("sync", "同期接続中…");
 
-  // Gist の決定: 渡されたID → 自動発見 → 自動作成
-  if (gistId) {
-    currentGistId = gistId;
+  const snap = await getDoc(docRef);
+  if (snap.exists()) {
+    const data = snap.data();
+    const remoteTasks = Array.isArray(data.tasks) ? data.tasks : [];
+    const merged = mergeTasks(getTasks(), remoteTasks);
+    lastRemoteHash = hash(merged);
+    onRemote(merged);
+    if (hash(merged) !== hash(remoteTasks)) {
+      await setDoc(docRef, { tasks: merged, updatedAt: Date.now() }, { merge: true });
+    }
   } else {
-    currentGistId = await findExistingGist(token);
+    const initial = getTasks();
+    await setDoc(docRef, { tasks: initial, updatedAt: Date.now() });
+    lastRemoteHash = hash(initial);
   }
 
-  if (!currentGistId) {
-    currentGistId = await createGist(token, getTasks());
-    onGistIdChange?.(currentGistId);
-    lastRemoteHash = hash(getTasks());
-    onStatus("ok", "同期済み（新規Gistを作成）");
-  } else {
-    onGistIdChange?.(currentGistId);
-    // 初回読み込み + マージ
-    const remote = await readGist(token, currentGistId);
-    if (remote) {
-      const merged = mergeTasks(getTasks(), remote.tasks);
-      lastRemoteHash = hash(merged);
-      onRemote(merged);
-      // 統合をリモートに書き戻し
-      await writeGist(token, currentGistId, merged);
-      onStatus("ok", "同期済み");
-    } else {
-      // 中身が空の Gist だった場合はローカルを書き込む
-      await writeGist(token, currentGistId, getTasks());
-      lastRemoteHash = hash(getTasks());
-      onStatus("ok", "同期済み");
+  unsub = onSnapshot(
+    docRef,
+    (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      const remoteTasks = Array.isArray(data.tasks) ? data.tasks : [];
+      const h = hash(remoteTasks);
+      if (h === lastRemoteHash) return;
+      lastRemoteHash = h;
+      onRemoteRef(remoteTasks);
+    },
+    (err) => {
+      onStatusRef("err", "同期エラー: " + (err.code || err.message));
     }
-  }
+  );
 
   active = true;
   window.addEventListener("fuwatto:push", schedulePush);
-  startPolling();
+  onStatus("ok", "同期済み");
 }
 
 export function stopSync() {
-  active = false;
-  if (pollTimer) clearInterval(pollTimer);
-  if (pushTimer) clearTimeout(pushTimer);
-  pollTimer = null;
+  if (unsub) {
+    try { unsub(); } catch {}
+    unsub = null;
+  }
+  clearTimeout(pushTimer);
   pushTimer = null;
-  lastEtag = null;
-  lastRemoteHash = "";
-  currentToken = null;
-  currentGistId = null;
+  active = false;
   window.removeEventListener("fuwatto:push", schedulePush);
+  app = null;
+  db = null;
+  docRef = null;
+  lastRemoteHash = "";
 }
-
-// ---------- 内部 ----------
 
 function schedulePush() {
   if (!active) return;
@@ -95,122 +115,13 @@ function schedulePush() {
       const h = hash(tasks);
       if (h === lastRemoteHash) return;
       onStatusRef("sync", "同期中…");
-      await writeGist(currentToken, currentGistId, tasks);
       lastRemoteHash = h;
+      await setDoc(docRef, { tasks, updatedAt: Date.now() }, { merge: true });
       onStatusRef("ok", "同期済み");
     } catch (err) {
-      onStatusRef("err", "送信エラー: " + (err.message || err));
+      onStatusRef("err", "送信エラー: " + (err.code || err.message));
     }
-  }, 700);
-}
-
-function startPolling() {
-  if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(async () => {
-    if (!active) return;
-    try {
-      const remote = await readGist(currentToken, currentGistId, lastEtag);
-      if (!remote) return; // 304 = 変更なし
-      const h = hash(remote.tasks);
-      if (h === lastRemoteHash) return; // 自分が書いた変更
-      const merged = mergeTasks(getTasksRef(), remote.tasks);
-      lastRemoteHash = hash(merged);
-      onRemoteRef(merged);
-      // マージで自分の変更も含まれた場合は書き戻し
-      if (hash(merged) !== h) {
-        await writeGist(currentToken, currentGistId, merged);
-      }
-    } catch (err) {
-      console.warn("polling error", err);
-    }
-  }, POLL_MS);
-}
-
-async function findExistingGist(token) {
-  const res = await fetch("https://api.github.com/gists?per_page=100", {
-    headers: ghHeaders(token),
-  });
-  if (!res.ok) throw new Error("Gist 一覧の取得に失敗: " + res.status);
-  const list = await res.json();
-  const found = list.find((g) => g.description === GIST_DESCRIPTION);
-  return found?.id || null;
-}
-
-async function createGist(token, tasks) {
-  const body = {
-    description: GIST_DESCRIPTION,
-    public: false,
-    files: {
-      [FILENAME]: { content: JSON.stringify({ tasks, version: 1 }, null, 2) },
-    },
-  };
-  const res = await fetch("https://api.github.com/gists", {
-    method: "POST",
-    headers: ghHeaders(token),
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error("Gist 作成失敗: " + res.status + " " + text);
-  }
-  const data = await res.json();
-  return data.id;
-}
-
-async function readGist(token, id, etag) {
-  const headers = ghHeaders(token);
-  if (etag) headers["If-None-Match"] = etag;
-  const res = await fetch("https://api.github.com/gists/" + id, { headers });
-  if (res.status === 304) return null;
-  if (!res.ok) {
-    if (res.status === 404) {
-      throw new Error("Gist が見つかりません（削除されたか権限不足）");
-    }
-    throw new Error("Gist 読み込み失敗: " + res.status);
-  }
-  lastEtag = res.headers.get("ETag");
-  const data = await res.json();
-  const file = data.files?.[FILENAME];
-  if (!file) return { tasks: [] };
-  let content = file.content;
-  // truncated な場合は raw_url から取得
-  if (file.truncated && file.raw_url) {
-    const r2 = await fetch(file.raw_url);
-    content = await r2.text();
-  }
-  try {
-    const parsed = JSON.parse(content || "{}");
-    return { tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [] };
-  } catch {
-    return { tasks: [] };
-  }
-}
-
-async function writeGist(token, id, tasks) {
-  const body = {
-    files: {
-      [FILENAME]: { content: JSON.stringify({ tasks, version: 1 }, null, 2) },
-    },
-  };
-  const res = await fetch("https://api.github.com/gists/" + id, {
-    method: "PATCH",
-    headers: ghHeaders(token),
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error("Gist 更新失敗: " + res.status + " " + text);
-  }
-  lastEtag = res.headers.get("ETag");
-}
-
-function ghHeaders(token) {
-  return {
-    Accept: "application/vnd.github+json",
-    "X-GitHub-Api-Version": "2022-11-28",
-    Authorization: "Bearer " + token,
-    "Content-Type": "application/json",
-  };
+  }, 500);
 }
 
 function mergeTasks(localList, remoteList) {

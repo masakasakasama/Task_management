@@ -44,26 +44,28 @@ https://<あなたのGitHubユーザー名>.github.io/<リポジトリ名>/
 - 編集中の入力は0.6秒ごとに自動保存（明示的な「保存」ボタンを押し忘れても大丈夫）
 - スマホは画面に合わせて1列レイアウトに自動切替
 
-## PC・スマホ間のリアルタイム同期（GitHub トークンだけでOK）
+## PC・スマホ間のリアルタイム同期（設定不要）
 
-GitHub のアカウントを既にお持ちなので、追加サービスへのサインアップは不要です。
-個人用アクセストークンを1つ作って貼るだけで、PC・スマホ・タブレットすべて同期されます。
+このアプリは **同じURLを開いた全ての端末で自動的に同期** されます。
+ログイン・トークン・QR読み取り、いずれも不要です。
 
-1. https://github.com/settings/tokens?type=beta を開く（**Fine-grained tokens**）
-2. **Generate new token**
-   - Token name: 何でもOK（例: `fuwatto-task`）
-   - Expiration: 任意（推奨: 90日 〜 1年）
-   - Resource owner: 自分のアカウント
-   - Repository access: **Public Repositories (read-only)** で十分（このトークンはリポジトリ操作には使いません）
-   - **Account permissions** → **Gists** を **Read and write** に設定（ここだけ重要）
-3. 生成された `github_pat_…` をコピー
-4. アプリ右上の ⚙ ボタン → **GitHub Personal Access Token** に貼り付けて「保存して反映」
-5. 初回は自動で **非公開 Gist** が作成されます。これがクラウド側の保管庫になります
-6. 他の端末を追加するときは、トークンを再入力する必要はありません。⚙ → **「📱 別の端末を繋ぐ」** で QRコードが表示されるので、新しい端末のカメラでそれを読み取って表示されたリンクを開くだけで、自動で同期が始まります。
-   - QRが使えない端末でも、表示される「リンクをコピー」を押して送れば、そのURLを開くだけで設定完了
-   - リンクには同期トークンが入っているので、SNS等への投稿は避けてください
+仕組み:
+- 一意な `SPACE_ID`（24文字以上）を `sync.js` にハードコード
+- すべての端末が同じ Firestore ドキュメント (`spaces/<SPACE_ID>`) を読み書き
+- Firestore のセキュリティルールで「ID 24文字以上」のみ許可しているため、URLを知らない第三者は到達できません
 
-仕組み: タスク一覧を private gist の `tasks.json` に保存しています。Gist は GitHub アカウントだけが閲覧でき、個人用なので外部に漏れません。トークンはこの端末のブラウザ（localStorage）にだけ保存されます。約12秒間隔のポーリング + 変更時即時 PATCH でほぼリアルタイムに同期します。
+### Firestore セキュリティルール
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /spaces/{spaceId} {
+      allow read, write: if spaceId.size() >= 24;
+    }
+  }
+}
+```
 
 ## バックアップ運用（おすすめ）
 

@@ -122,51 +122,21 @@
   <dialog id="settings" class="modal">
     <form method="dialog">
       <header>
-        <h2>同期 & バックアップ設定</h2>
+        <h2>設定</h2>
         <button type="button" class="icon-btn" id="closeSettings" aria-label="閉じる">✕</button>
       </header>
       <p class="hint">
-        端末間で自動同期するには <b>GitHub のトークン</b> を1つ貼るだけ。<br>
-        ① <a id="patLink" href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noopener">Personal Access Tokens (fine-grained) を新規作成</a>
-        → ② <b>「Account permissions」→「Gists」を Read and write</b> に設定 → ③ 生成された <code>github_pat_…</code> を下に貼り付け<br>
-        ※ Repository permissions は変更不要。トークンはこの端末のブラウザにのみ保存されます。<br>
-        他の端末でも同じトークンを貼ると、自動で同じデータに繋がります。
+        このアプリは、同じURLを開いた全ての端末で自動的にデータが同期されます。<br>
+        トークンやログインは不要です。新しい端末ではこのページをブックマークするだけでOK。
       </p>
-      <label>
-        <span>GitHub Personal Access Token</span>
-        <input id="ghToken" type="password" autocomplete="off" placeholder="github_pat_…" />
-      </label>
-      <label>
-        <span>Gist ID（自動取得されます。空欄でOK）</span>
-        <input id="ghGistId" type="text" placeholder="自動で発見/作成されます" />
-      </label>
-
-      <div class="link-device">
-        <button type="button" id="linkDeviceBtn">📱 別の端末を繋ぐ（QR / リンク）</button>
-        <div id="linkArea" hidden>
-          <p class="hint">
-            このQRコードを別の端末のカメラで読み取って開くだけで、トークンが自動でコピーされて同期が始まります。<br>
-            （カメラで読めない場合は下のリンクをコピーして、その端末で開いてください）
-          </p>
-          <div class="qr-wrap"><canvas id="qrCanvas"></canvas></div>
-          <div class="link-row">
-            <input id="linkUrl" type="text" readonly />
-            <button type="button" id="copyLinkBtn">コピー</button>
-          </div>
-          <p class="hint warn-hint">
-            ⚠️ このリンクには同期トークンが含まれます。SNS等への投稿はしないでください。
-          </p>
-        </div>
-      </div>
-
       <label class="checkbox">
         <input type="checkbox" id="autoBackup" />
         <span>週に一度、自動で JSON バックアップをダウンロードする</span>
       </label>
       <footer class="editor-footer">
-        <button type="button" id="clearLocalBtn" class="danger">この端末のデータを消去</button>
+        <button type="button" id="clearLocalBtn" class="danger">この端末のキャッシュを消去</button>
         <div class="grow"></div>
-        <button type="button" id="saveSettingsBtn" class="primary">保存して反映</button>
+        <button type="button" id="saveSettingsBtn" class="primary">保存</button>
       </footer>
     </form>
   </dialog>

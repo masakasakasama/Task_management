@@ -542,82 +542,18 @@ function maybeWeeklyBackup() {
 const settingsDialog = $("#settings");
 $("#settingsBtn").addEventListener("click", () => {
   const s = loadSettings();
-  $("#ghToken").value = s.ghToken || "";
-  $("#ghGistId").value = s.ghGistId || "";
   $("#autoBackup").checked = !!s.autoBackup;
   settingsDialog.showModal();
 });
 $("#closeSettings").addEventListener("click", () => settingsDialog.close());
 
-$("#saveSettingsBtn").addEventListener("click", async () => {
+$("#saveSettingsBtn").addEventListener("click", () => {
   const s = loadSettings();
-  s.ghToken = $("#ghToken").value.trim();
-  s.ghGistId = $("#ghGistId").value.trim();
   s.autoBackup = $("#autoBackup").checked;
   saveSettings(s);
   settingsDialog.close();
   toast("設定を保存しました");
-  await reconnectSync();
 });
-
-// QR / リンク生成
-$("#linkDeviceBtn").addEventListener("click", async () => {
-  const s = loadSettings();
-  if (!s.ghToken) {
-    alert("先に GitHub トークンを設定して保存してください。");
-    return;
-  }
-  const payload = btoa(unescape(encodeURIComponent(JSON.stringify({
-    t: s.ghToken,
-    g: s.ghGistId || "",
-  }))));
-  const url = location.origin + location.pathname + "#fuwatto=" + payload;
-  $("#linkUrl").value = url;
-  $("#linkArea").hidden = false;
-  try {
-    const QRCode = await import("https://esm.sh/qrcode@1.5.4");
-    await QRCode.toCanvas($("#qrCanvas"), url, {
-      width: 240,
-      margin: 2,
-      color: { dark: "#4b3a52", light: "#ffffff" },
-    });
-  } catch (err) {
-    console.warn(err);
-    toast("QRコード生成に失敗（リンクをコピーして使ってください）");
-  }
-});
-
-$("#copyLinkBtn").addEventListener("click", async () => {
-  const url = $("#linkUrl").value;
-  try {
-    await navigator.clipboard.writeText(url);
-    toast("リンクをコピーしました");
-  } catch {
-    $("#linkUrl").select();
-    document.execCommand("copy");
-    toast("リンクをコピーしました");
-  }
-});
-
-// URLハッシュからの自動インポート
-function maybeImportFromHash() {
-  const m = location.hash.match(/fuwatto=([^&]+)/);
-  if (!m) return false;
-  try {
-    const data = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
-    if (!data.t) return false;
-    const s = loadSettings();
-    s.ghToken = data.t;
-    if (data.g) s.ghGistId = data.g;
-    saveSettings(s);
-    history.replaceState(null, "", location.pathname);
-    toast("別の端末から同期設定を読み込みました ♡");
-    return true;
-  } catch (err) {
-    console.warn("import hash failed", err);
-    return false;
-  }
-}
 
 $("#clearLocalBtn").addEventListener("click", () => {
   if (!confirm("この端末のタスクデータと履歴をすべて削除します。\n（復元用に直前にバックアップを保存することをおすすめします）")) return;
@@ -634,16 +570,9 @@ $("#clearLocalBtn").addEventListener("click", () => {
 
 async function reconnectSync() {
   stopSync();
-  const s = loadSettings();
-  if (!s.ghToken) {
-    setSyncStatus("warn", "ローカル保存のみ（同期未設定）");
-    return;
-  }
   try {
     setSyncStatus("sync", "同期接続中…");
     await startSync({
-      token: s.ghToken,
-      gistId: s.ghGistId || null,
       getTasks: () => state.tasks,
       onRemote: (tasks) => {
         state.tasks = tasks.map(normalizeTask);
@@ -652,17 +581,10 @@ async function reconnectSync() {
         setSyncStatus("ok", "同期済み");
       },
       onStatus: (kind, msg) => setSyncStatus(kind, msg),
-      onGistIdChange: (id) => {
-        const cur = loadSettings();
-        cur.ghGistId = id;
-        saveSettings(cur);
-        const input = $("#ghGistId");
-        if (input) input.value = id;
-      },
     });
   } catch (err) {
     console.error(err);
-    setSyncStatus("err", "同期エラー: " + (err.message || err));
+    setSyncStatus("err", "オフライン（ローカル保存は継続）");
     toast("同期に失敗しました: " + (err.message || err));
   }
 }
@@ -670,13 +592,11 @@ async function reconnectSync() {
 // ---------- 起動 ----------
 
 function init() {
-  const imported = maybeImportFromHash();
   state.tasks = loadTasks().map(normalizeTask);
   render();
-  setSyncStatus("ok", "この端末に保存済み");
+  setSyncStatus("sync", "同期接続中…");
   reconnectSync();
   maybeWeeklyBackup();
-  if (imported) toast("同期を有効化中…");
   // PWA
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js").catch(() => {});

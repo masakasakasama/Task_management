@@ -1,7 +1,7 @@
 {
-  "name": "ふわっとタスク管理",
-  "short_name": "ふわっとタスク",
-  "description": "可愛くてちゃんと使える、PCとスマホ両対応のタスク管理アプリ",
+  "name": "タスクマネジメント",
+  "short_name": "タスクマネジメント",
+  "description": "PCとスマホで自動同期されるタスク管理アプリ",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

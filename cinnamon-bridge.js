@@ -22,12 +22,12 @@ import {
 
 // ↓ ここに cinnamon-workout の Firebase 設定を貼る（apiKey 等）
 const cinnamonConfig = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: "",
+  apiKey: "AIzaSyBHXH8S-IUSUpTZ102XF4M6my3Lr4FDD_0",
+  authDomain: "cinnamon-workout.firebaseapp.com",
+  projectId: "cinnamon-workout",
+  storageBucket: "cinnamon-workout.firebasestorage.app",
+  messagingSenderId: "587980763699",
+  appId: "1:587980763699:web:ca9f711928b463a9d8a946",
 };
 
 // Daily Habits 側で「ワークアウト」習慣を識別する名前（部分一致）

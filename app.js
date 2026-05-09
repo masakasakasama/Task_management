@@ -560,6 +560,65 @@ $("#saveSettingsBtn").addEventListener("click", async () => {
   await reconnectSync();
 });
 
+// QR / リンク生成
+$("#linkDeviceBtn").addEventListener("click", async () => {
+  const s = loadSettings();
+  if (!s.ghToken) {
+    alert("先に GitHub トークンを設定して保存してください。");
+    return;
+  }
+  const payload = btoa(unescape(encodeURIComponent(JSON.stringify({
+    t: s.ghToken,
+    g: s.ghGistId || "",
+  }))));
+  const url = location.origin + location.pathname + "#fuwatto=" + payload;
+  $("#linkUrl").value = url;
+  $("#linkArea").hidden = false;
+  try {
+    const QRCode = await import("https://esm.sh/qrcode@1.5.4");
+    await QRCode.toCanvas($("#qrCanvas"), url, {
+      width: 240,
+      margin: 2,
+      color: { dark: "#4b3a52", light: "#ffffff" },
+    });
+  } catch (err) {
+    console.warn(err);
+    toast("QRコード生成に失敗（リンクをコピーして使ってください）");
+  }
+});
+
+$("#copyLinkBtn").addEventListener("click", async () => {
+  const url = $("#linkUrl").value;
+  try {
+    await navigator.clipboard.writeText(url);
+    toast("リンクをコピーしました");
+  } catch {
+    $("#linkUrl").select();
+    document.execCommand("copy");
+    toast("リンクをコピーしました");
+  }
+});
+
+// URLハッシュからの自動インポート
+function maybeImportFromHash() {
+  const m = location.hash.match(/fuwatto=([^&]+)/);
+  if (!m) return false;
+  try {
+    const data = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
+    if (!data.t) return false;
+    const s = loadSettings();
+    s.ghToken = data.t;
+    if (data.g) s.ghGistId = data.g;
+    saveSettings(s);
+    history.replaceState(null, "", location.pathname);
+    toast("別の端末から同期設定を読み込みました ♡");
+    return true;
+  } catch (err) {
+    console.warn("import hash failed", err);
+    return false;
+  }
+}
+
 $("#clearLocalBtn").addEventListener("click", () => {
   if (!confirm("この端末のタスクデータと履歴をすべて削除します。\n（復元用に直前にバックアップを保存することをおすすめします）")) return;
   downloadBackup("before-clear");
@@ -611,11 +670,13 @@ async function reconnectSync() {
 // ---------- 起動 ----------
 
 function init() {
+  const imported = maybeImportFromHash();
   state.tasks = loadTasks().map(normalizeTask);
   render();
   setSyncStatus("ok", "この端末に保存済み");
   reconnectSync();
   maybeWeeklyBackup();
+  if (imported) toast("同期を有効化中…");
   // PWA
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js").catch(() => {});

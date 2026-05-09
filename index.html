@@ -140,6 +140,25 @@
         <span>Gist ID（自動取得されます。空欄でOK）</span>
         <input id="ghGistId" type="text" placeholder="自動で発見/作成されます" />
       </label>
+
+      <div class="link-device">
+        <button type="button" id="linkDeviceBtn">📱 別の端末を繋ぐ（QR / リンク）</button>
+        <div id="linkArea" hidden>
+          <p class="hint">
+            このQRコードを別の端末のカメラで読み取って開くだけで、トークンが自動でコピーされて同期が始まります。<br>
+            （カメラで読めない場合は下のリンクをコピーして、その端末で開いてください）
+          </p>
+          <div class="qr-wrap"><canvas id="qrCanvas"></canvas></div>
+          <div class="link-row">
+            <input id="linkUrl" type="text" readonly />
+            <button type="button" id="copyLinkBtn">コピー</button>
+          </div>
+          <p class="hint warn-hint">
+            ⚠️ このリンクには同期トークンが含まれます。SNS等への投稿はしないでください。
+          </p>
+        </div>
+      </div>
+
       <label class="checkbox">
         <input type="checkbox" id="autoBackup" />
         <span>週に一度、自動で JSON バックアップをダウンロードする</span>

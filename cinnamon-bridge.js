@@ -1,26 +1,29 @@
-// cinnamon-workout 連携モジュール
+// cinnamon-workout 連携
 //
-// 別アプリ「cinnamon-workout」の Firestore を読み取り、
-// 当日にワークアウトが完了していたら、指定の習慣セルを 100% にする。
+// cinnamon-workout の Firestore (couples/<COUPLE_ID>) を購読し、
+// 今日の達成率を計算して Daily Habits の対象セルへ反映する。
 //
-// 使い方:
-//   1) 下の cinnamonConfig に cinnamon-workout の Firebase 設定を貼る
-//   2) WORKOUT_HABIT_NAME に、Daily Habits 側の対象習慣の名前を記入
-//   3) workoutDoneToday() の中身を、cinnamon-workout のデータ構造に合わせて実装
-//      （ワークアウト完了を判定するクエリ）
+// データ構造（cinnamon-workout 側）:
+//   couples/<COUPLE_ID>: {
+//     targets: { squat: 10, plank: 15, ... },        // 1日の目標
+//     byDay: {
+//       "YYYY-MM-DD": {
+//         squat: 5, situp: 20, plank: 20, ...        // その日の実績
+//       }
+//     }
+//   }
 //
-// 設定が未入力（apiKey が空）の場合は何もしない。
+// 達成率 = （目標達成した種目数 / 目標が設定されている種目数）
+// → 0/20/40/60/80/100 に丸めて Daily Habits セルへ反映
+// 手動で上回る値が入っている場合はダウングレードしない。
 
 import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import {
   getFirestore,
-  collection,
-  query,
-  where,
+  doc,
   onSnapshot,
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
-// ↓ ここに cinnamon-workout の Firebase 設定を貼る（apiKey 等）
 const cinnamonConfig = {
   apiKey: "AIzaSyBHXH8S-IUSUpTZ102XF4M6my3Lr4FDD_0",
   authDomain: "cinnamon-workout.firebaseapp.com",
@@ -30,46 +33,59 @@ const cinnamonConfig = {
   appId: "1:587980763699:web:ca9f711928b463a9d8a946",
 };
 
-// Daily Habits 側で「ワークアウト」習慣を識別する名前（部分一致）
-const WORKOUT_HABIT_NAME_KEYWORDS = ["ワークアウト", "workout", "筋トレ"];
+const COUPLE_ID = "masakasakasama-cinnamoroll-couple-2026";
+
+// Daily Habits 側で対象とする習慣の名前キーワード（部分一致・大文字小文字無視）
+const WORKOUT_HABIT_KEYWORDS = ["ワークアウト", "workout", "筋トレ"];
 
 let started = false;
 
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function calcProgress(byDayToday, targets) {
+  if (!byDayToday || !targets) return 0;
+  let met = 0;
+  let total = 0;
+  for (const type of Object.keys(targets)) {
+    const target = Number(targets[type]) || 0;
+    if (target <= 0) continue;
+    total++;
+    const actual = Number(byDayToday[type]) || 0;
+    if (actual >= target) met++;
+  }
+  if (total === 0) return 0;
+  // 0/20/40/60/80/100 の6段階に丸める
+  return Math.round((met / total) * 5) * 20;
+}
+
 /**
- * @param {(habitNameKeywords: string[], dateKey: string) => void} onWorkoutDone
- *   今日ワークアウト完了が検知されたら呼ぶコールバック
+ * @param {(nameKeywords: string[], dateKey: string, pct: number) => void} onProgress
  */
-export function startCinnamonBridge(onWorkoutDone) {
+export function startCinnamonBridge(onProgress) {
   if (started) return;
-  if (!cinnamonConfig.apiKey || !cinnamonConfig.projectId) return; // 未設定
+  if (!cinnamonConfig.apiKey || !cinnamonConfig.projectId) return;
   started = true;
 
-  // 既存のFirebaseアプリと衝突しないように別名で初期化
-  const existing = getApps().find((a) => a.name === "cinnamon-bridge");
-  const app = existing || initializeApp(cinnamonConfig, "cinnamon-bridge");
-  const db = getFirestore(app);
-
-  // ↓↓↓ ここから先は cinnamon-workout のデータ構造に合わせて要調整 ↓↓↓
-  // 例として「workouts コレクションに、completedAt がドキュメントに入っている」前提で書いてあります。
-  // 実際の構造が違う場合（例: spaces/<id>/sessions/<id> など）、ここを書き換えてください。
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const app =
+      getApps().find((a) => a.name === "cinnamon-bridge") ||
+      initializeApp(cinnamonConfig, "cinnamon-bridge");
+    const db = getFirestore(app);
+    const docRef = doc(db, "couples", COUPLE_ID);
 
-    const q = query(
-      collection(db, "workouts"),
-      where("completedAt", ">=", today.toISOString()),
-      where("completedAt", "<", tomorrow.toISOString())
-    );
     onSnapshot(
-      q,
+      docRef,
       (snap) => {
-        if (!snap.empty) {
-          onWorkoutDone(WORKOUT_HABIT_NAME_KEYWORDS, todayKey);
-        }
+        if (!snap.exists()) return;
+        const data = snap.data();
+        const tk = todayKey();
+        const byDayToday = data.byDay && data.byDay[tk];
+        const targets = data.targets;
+        const pct = calcProgress(byDayToday, targets);
+        onProgress(WORKOUT_HABIT_KEYWORDS, tk, pct);
       },
       (err) => console.warn("[cinnamon-bridge] snapshot err:", err)
     );

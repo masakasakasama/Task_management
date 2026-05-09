@@ -1043,22 +1043,25 @@ function init() {
   setSyncStatus("sync", "同期接続中…");
   reconnectSync();
 
-  // cinnamon-workout 連携: 完了検知 → ワークアウト習慣を100%に
-  startCinnamonBridge((nameKeywords, dateKey) => {
+  // cinnamon-workout 連携: 完了検知 → ワークアウト習慣を達成率に反映
+  startCinnamonBridge((nameKeywords, dateKey, pct) => {
     const target = state.habits.find((h) =>
       nameKeywords.some((k) => (h.name || "").toLowerCase().includes(k.toLowerCase()))
     );
-    if (!target) return;
+    if (!target) return; // 対象の習慣がDailyに無い
     target.entries = target.entries || {};
     target.entryUpdatedAt = target.entryUpdatedAt || {};
-    if (target.entries[dateKey] === 100) return; // 既に100%なら何もしない
-    target.entries[dateKey] = 100;
+    const current = target.entries[dateKey] || 0;
+    if (pct <= current) return; // 手動で上回ってる場合は下げない
+    target.entries[dateKey] = pct;
     target.entryUpdatedAt[dateKey] = Date.now();
     target.updatedAt = Date.now();
     saveAll(false);
     renderHabits();
     renderToday();
-    toast(`💪 ${target.name} 完了！`);
+    if (pct === 100 && current < 100) {
+      toast(`💪 ${target.name} 達成！🎉`);
+    }
   });
 
   if ("serviceWorker" in navigator) {

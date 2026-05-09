@@ -1043,24 +1043,31 @@ function init() {
   setSyncStatus("sync", "同期接続中…");
   reconnectSync();
 
-  // cinnamon-workout 連携: 完了検知 → ワークアウト習慣を達成率に反映
-  startCinnamonBridge((nameKeywords, dateKey, pct) => {
+  // cinnamon-workout 連携: 過去〜今日の達成率をワークアウト習慣に反映
+  startCinnamonBridge((nameKeywords, progressByDate) => {
     const target = state.habits.find((h) =>
       nameKeywords.some((k) => (h.name || "").toLowerCase().includes(k.toLowerCase()))
     );
     if (!target) return; // 対象の習慣がDailyに無い
     target.entries = target.entries || {};
     target.entryUpdatedAt = target.entryUpdatedAt || {};
-    const current = target.entries[dateKey] || 0;
-    if (pct <= current) return; // 手動で上回ってる場合は下げない
-    target.entries[dateKey] = pct;
-    target.entryUpdatedAt[dateKey] = Date.now();
-    target.updatedAt = Date.now();
-    saveAll(false);
-    renderHabits();
-    renderToday();
-    if (pct === 100 && current < 100) {
-      toast(`💪 ${target.name} 達成！🎉`);
+    let changed = false;
+    let newlyComplete = false;
+    const tk = todayKey();
+    for (const [dateKey, pct] of Object.entries(progressByDate)) {
+      const current = target.entries[dateKey] || 0;
+      if (pct <= current) continue; // 手動で上回ってる場合は下げない
+      if (dateKey === tk && pct === 100 && current < 100) newlyComplete = true;
+      target.entries[dateKey] = pct;
+      target.entryUpdatedAt[dateKey] = Date.now();
+      changed = true;
+    }
+    if (changed) {
+      target.updatedAt = Date.now();
+      saveAll(false);
+      renderHabits();
+      renderToday();
+      if (newlyComplete) toast(`💪 ${target.name} 達成！🎉`);
     }
   });
 

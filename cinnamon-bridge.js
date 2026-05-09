@@ -62,7 +62,8 @@ function calcProgress(byDayToday, targets) {
 }
 
 /**
- * @param {(nameKeywords: string[], dateKey: string, pct: number) => void} onProgress
+ * @param {(nameKeywords: string[], progressByDate: Record<string, number>) => void} onProgress
+ *   キー: YYYY-MM-DD、値: 0/20/40/60/80/100 の達成率
  */
 export function startCinnamonBridge(onProgress) {
   if (started) return;
@@ -81,11 +82,13 @@ export function startCinnamonBridge(onProgress) {
       (snap) => {
         if (!snap.exists()) return;
         const data = snap.data();
-        const tk = todayKey();
-        const byDayToday = data.byDay && data.byDay[tk];
         const targets = data.targets;
-        const pct = calcProgress(byDayToday, targets);
-        onProgress(WORKOUT_HABIT_KEYWORDS, tk, pct);
+        const byDay = data.byDay || {};
+        const progressByDate = {};
+        for (const dateKey of Object.keys(byDay)) {
+          progressByDate[dateKey] = calcProgress(byDay[dateKey], targets);
+        }
+        onProgress(WORKOUT_HABIT_KEYWORDS, progressByDate);
       },
       (err) => console.warn("[cinnamon-bridge] snapshot err:", err)
     );

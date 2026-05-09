@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#ffd6e7" />
+  <title>ふわっとタスク管理 ♡</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./icon.svg" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">♡</span>
+      <h1>ふわっとタスク</h1>
+    </div>
+    <div class="status" id="syncStatus" title="保存・同期の状態">
+      <span class="dot" id="syncDot"></span>
+      <span id="syncText">読み込み中…</span>
+    </div>
+    <div class="actions">
+      <button id="addBtn" class="primary">＋ 新しいタスク</button>
+      <button id="backupBtn" title="JSONでバックアップを保存">⬇ バックアップ</button>
+      <button id="restoreBtn" title="JSONから復元">⬆ 復元</button>
+      <input type="file" id="restoreFile" accept="application/json" hidden />
+      <button id="settingsBtn" title="同期設定">⚙</button>
+    </div>
+  </header>
+
+  <section class="filters">
+    <input id="searchInput" type="search" placeholder="🔍 タイトル・詳細・タグで検索…" />
+    <select id="filterStatus">
+      <option value="all">すべての状態</option>
+      <option value="todo">未着手</option>
+      <option value="doing">進行中</option>
+      <option value="done">完了</option>
+    </select>
+    <select id="filterPriority">
+      <option value="all">すべての優先度</option>
+      <option value="high">高</option>
+      <option value="mid">中</option>
+      <option value="low">低</option>
+    </select>
+    <select id="sortBy">
+      <option value="deadline">期限が近い順</option>
+      <option value="priority">優先度が高い順</option>
+      <option value="created">作成が新しい順</option>
+      <option value="updated">更新が新しい順</option>
+    </select>
+  </section>
+
+  <main>
+    <div class="board" id="board">
+      <div class="column" data-status="todo">
+        <h2>📝 未着手 <span class="count" id="count-todo">0</span></h2>
+        <div class="cards" id="col-todo"></div>
+      </div>
+      <div class="column" data-status="doing">
+        <h2>✨ 進行中 <span class="count" id="count-doing">0</span></h2>
+        <div class="cards" id="col-doing"></div>
+      </div>
+      <div class="column" data-status="done">
+        <h2>🌸 完了 <span class="count" id="count-done">0</span></h2>
+        <div class="cards" id="col-done"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 編集モーダル -->
+  <dialog id="editor" class="modal">
+    <form method="dialog" id="editorForm">
+      <header>
+        <h2 id="editorTitle">タスクを編集</h2>
+        <button type="button" class="icon-btn" id="closeEditor" aria-label="閉じる">✕</button>
+      </header>
+      <label>
+        <span>タイトル</span>
+        <input id="f-title" type="text" maxlength="200" required placeholder="やることを入力…" />
+      </label>
+      <label>
+        <span>詳細</span>
+        <textarea id="f-details" rows="6" placeholder="メモ・手順・参考リンクなど"></textarea>
+      </label>
+      <div class="row">
+        <label>
+          <span>期限</span>
+          <input id="f-deadline" type="datetime-local" />
+        </label>
+        <label>
+          <span>優先度</span>
+          <select id="f-priority">
+            <option value="low">低</option>
+            <option value="mid" selected>中</option>
+            <option value="high">高</option>
+          </select>
+        </label>
+        <label>
+          <span>状態</span>
+          <select id="f-status">
+            <option value="todo">未着手</option>
+            <option value="doing">進行中</option>
+            <option value="done">完了</option>
+          </select>
+        </label>
+      </div>
+      <label>
+        <span>タグ（カンマ区切り）</span>
+        <input id="f-tags" type="text" placeholder="例: 会議, 資料, クライアントA" />
+      </label>
+      <footer class="editor-footer">
+        <button type="button" id="deleteBtn" class="danger">🗑 削除</button>
+        <div class="grow"></div>
+        <button type="button" id="cancelBtn">キャンセル</button>
+        <button type="submit" class="primary">💾 保存</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- 設定モーダル -->
+  <dialog id="settings" class="modal">
+    <form method="dialog">
+      <header>
+        <h2>同期 & バックアップ設定</h2>
+        <button type="button" class="icon-btn" id="closeSettings" aria-label="閉じる">✕</button>
+      </header>
+      <p class="hint">
+        端末間の自動同期には Firebase Firestore を利用します。下のフォームに自分の Firebase
+        プロジェクト設定を貼り付けると、PC・スマホで同じデータがリアルタイムに同期されます。
+        未設定でもこの端末のローカル保存と JSON バックアップは動作します。
+      </p>
+      <label>
+        <span>Firebase 設定 (JSON)</span>
+        <textarea id="firebaseConfig" rows="8" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","appId":"..."}'></textarea>
+      </label>
+      <label>
+        <span>同期用のスペース名（チームや端末グループの識別子）</span>
+        <input id="firebaseSpace" type="text" placeholder="例: my-work / shared-team" />
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" id="autoBackup" />
+        <span>週に一度、自動で JSON バックアップをダウンロードする</span>
+      </label>
+      <footer class="editor-footer">
+        <button type="button" id="clearLocalBtn" class="danger">この端末のデータを消去</button>
+        <div class="grow"></div>
+        <button type="button" id="saveSettingsBtn" class="primary">保存して反映</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

@@ -1025,10 +1025,9 @@ function applyTheme(theme) {
 }
 
 function init() {
-  // テーマ初期化（保存値 → OS 設定 → light）
+  // テーマ初期化（保存値があればそれ、なければ常にライト）
   const savedTheme = localStorage.getItem("fuwatto_theme_v1");
-  const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-  applyTheme(savedTheme || (prefersDark ? "dark" : "light"));
+  applyTheme(savedTheme || "light");
   $("#themeBtn").addEventListener("click", () => {
     applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
   });

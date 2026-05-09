@@ -542,8 +542,8 @@ function maybeWeeklyBackup() {
 const settingsDialog = $("#settings");
 $("#settingsBtn").addEventListener("click", () => {
   const s = loadSettings();
-  $("#firebaseConfig").value = s.firebaseConfig ? JSON.stringify(s.firebaseConfig, null, 2) : "";
-  $("#firebaseSpace").value = s.space || "";
+  $("#ghToken").value = s.ghToken || "";
+  $("#ghGistId").value = s.ghGistId || "";
   $("#autoBackup").checked = !!s.autoBackup;
   settingsDialog.showModal();
 });
@@ -551,18 +551,8 @@ $("#closeSettings").addEventListener("click", () => settingsDialog.close());
 
 $("#saveSettingsBtn").addEventListener("click", async () => {
   const s = loadSettings();
-  const raw = $("#firebaseConfig").value.trim();
-  let firebaseConfig = null;
-  if (raw) {
-    try {
-      firebaseConfig = JSON.parse(raw);
-    } catch {
-      alert("Firebase 設定のJSONが正しくありません。");
-      return;
-    }
-  }
-  s.firebaseConfig = firebaseConfig;
-  s.space = $("#firebaseSpace").value.trim();
+  s.ghToken = $("#ghToken").value.trim();
+  s.ghGistId = $("#ghGistId").value.trim();
   s.autoBackup = $("#autoBackup").checked;
   saveSettings(s);
   settingsDialog.close();
@@ -586,15 +576,15 @@ $("#clearLocalBtn").addEventListener("click", () => {
 async function reconnectSync() {
   stopSync();
   const s = loadSettings();
-  if (!s.firebaseConfig || !s.space) {
+  if (!s.ghToken) {
     setSyncStatus("warn", "ローカル保存のみ（同期未設定）");
     return;
   }
   try {
     setSyncStatus("sync", "同期接続中…");
     await startSync({
-      config: s.firebaseConfig,
-      space: s.space,
+      token: s.ghToken,
+      gistId: s.ghGistId || null,
       getTasks: () => state.tasks,
       onRemote: (tasks) => {
         state.tasks = tasks.map(normalizeTask);
@@ -603,10 +593,17 @@ async function reconnectSync() {
         setSyncStatus("ok", "同期済み");
       },
       onStatus: (kind, msg) => setSyncStatus(kind, msg),
+      onGistIdChange: (id) => {
+        const cur = loadSettings();
+        cur.ghGistId = id;
+        saveSettings(cur);
+        const input = $("#ghGistId");
+        if (input) input.value = id;
+      },
     });
   } catch (err) {
     console.error(err);
-    setSyncStatus("err", "同期エラー（ローカル保存は継続）");
+    setSyncStatus("err", "同期エラー: " + (err.message || err));
     toast("同期に失敗しました: " + (err.message || err));
   }
 }

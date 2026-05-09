@@ -44,31 +44,24 @@ https://<あなたのGitHubユーザー名>.github.io/<リポジトリ名>/
 - 編集中の入力は0.6秒ごとに自動保存（明示的な「保存」ボタンを押し忘れても大丈夫）
 - スマホは画面に合わせて1列レイアウトに自動切替
 
-## PC・スマホ間のリアルタイム同期（任意）
+## PC・スマホ間のリアルタイム同期（GitHub トークンだけでOK）
 
-ローカル保存だけでも使えますが、同期したい場合は無料の Firebase Firestore を利用します。
+GitHub のアカウントを既にお持ちなので、追加サービスへのサインアップは不要です。
+個人用アクセストークンを1つ作って貼るだけで、PC・スマホ・タブレットすべて同期されます。
 
-1. https://console.firebase.google.com で新規プロジェクトを作成
-2. **Build → Firestore Database → Create database**（テストモードでOK、後でルールを締めることを推奨）
-3. プロジェクト設定 → 「Web アプリ」を追加し、表示される設定 JSON をコピー
-4. アプリ右上の ⚙ ボタン → **Firebase 設定** に貼り付け
-5. **同期用のスペース名** を任意に決める（例: `my-work`）。同じスペース名を入れた端末同士で同期されます
-6. 「保存して反映」を押すと、以後すべての端末でリアルタイムに同期されます
+1. https://github.com/settings/tokens?type=beta を開く（**Fine-grained tokens**）
+2. **Generate new token**
+   - Token name: 何でもOK（例: `fuwatto-task`）
+   - Expiration: 任意（推奨: 90日 〜 1年）
+   - Resource owner: 自分のアカウント
+   - Repository access: **Public Repositories (read-only)** で十分（このトークンはリポジトリ操作には使いません）
+   - **Account permissions** → **Gists** を **Read and write** に設定（ここだけ重要）
+3. 生成された `github_pat_…` をコピー
+4. アプリ右上の ⚙ ボタン → **GitHub Personal Access Token** に貼り付けて「保存して反映」
+5. 初回は自動で **非公開 Gist** が作成されます。これがクラウド側の保管庫になります
+6. 他の端末でも同じトークンを貼れば、自動で同じ Gist を発見してリアルタイム同期されます（約12秒間隔でポーリング、書き込みは即時）
 
-### Firestore セキュリティルールの推奨
-
-最低でも以下のように、ログインユーザーや特定の条件に絞ることを推奨します（テスト用は全開放なのでそのまま本番運用しないでください）。
-
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{db}/documents {
-    match /fuwatto/{space} {
-      allow read, write: if request.auth != null;  // 例: ログイン必須にする場合
-    }
-  }
-}
-```
+仕組み: タスク一覧を private gist の `tasks.json` に保存しています。Gist は GitHub アカウントだけが閲覧でき、個人用なので外部に漏れません。トークンはこの端末のブラウザ（localStorage）にだけ保存されます。
 
 ## バックアップ運用（おすすめ）
 

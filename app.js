@@ -1,24 +1,16 @@
 // タスクマネジメントアプリ
-// - localStorage に常時自動保存
-// - 直近30世代の履歴を保持（自動バックアップ第1層）
-// - JSON ダウンロードによる手動 / 週次自動バックアップ（第2層）
-// - Firebase Firestore を設定すれば PC ⇄ スマホ間で自動同期（第3層）
+// - localStorage に常時自動保存（オフライン用キャッシュ）
+// - Firestore で全端末リアルタイム同期
 
 import { startSync, stopSync, isSyncActive } from "./sync.js";
 
 const STORAGE_KEY = "fuwatto_tasks_v1";
-const HISTORY_KEY = "fuwatto_history_v1";
-const SETTINGS_KEY = "fuwatto_settings_v1";
-const LAST_BACKUP_KEY = "fuwatto_last_backup_v1";
-const HISTORY_LIMIT = 30;
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 const state = {
   tasks: /** @type {Task[]} */ ([]),
   filter: { search: "", status: "all", priority: "all" },
   sort: "deadline",
   editingId: null,
-  remoteSubscribed: false,
 };
 
 /**
@@ -48,37 +40,12 @@ function loadTasks() {
 }
 
 function saveTasks(showStatus = true) {
-  const json = JSON.stringify(state.tasks);
-  localStorage.setItem(STORAGE_KEY, json);
-  pushHistory(json);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.tasks));
   if (showStatus) setSyncStatus("ok", isSyncActive() ? "保存・同期済み" : "この端末に保存済み");
   if (isSyncActive()) {
     setSyncStatus("sync", "同期中…");
     window.dispatchEvent(new CustomEvent("fuwatto:push", { detail: state.tasks }));
   }
-}
-
-function pushHistory(json) {
-  try {
-    const list = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
-    list.push({ at: Date.now(), data: json });
-    while (list.length > HISTORY_LIMIT) list.shift();
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
-  } catch {
-    // 履歴は壊れていても本データには影響させない
-  }
-}
-
-function loadSettings() {
-  try {
-    return JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
-  } catch {
-    return {};
-  }
-}
-
-function saveSettings(s) {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
 }
 
 // ---------- ユーティリティ ----------
@@ -136,6 +103,20 @@ function priorityLabel(p) {
 
 function priorityRank(p) {
   return { high: 0, mid: 1, low: 2 }[p] ?? 1;
+}
+
+function normalizeTask(t) {
+  return {
+    id: t.id || uid(),
+    title: t.title || "",
+    details: t.details || "",
+    deadline: t.deadline || "",
+    priority: ["low", "mid", "high"].includes(t.priority) ? t.priority : "mid",
+    status: ["todo", "doing", "done"].includes(t.status) ? t.status : "todo",
+    tags: Array.isArray(t.tags) ? t.tags.filter(Boolean) : [],
+    createdAt: typeof t.createdAt === "number" ? t.createdAt : Date.now(),
+    updatedAt: typeof t.updatedAt === "number" ? t.updatedAt : Date.now(),
+  };
 }
 
 // ---------- 描画 ----------
@@ -337,7 +318,6 @@ function closeEditor() {
 }
 
 function toLocalInput(iso) {
-  // datetime-local 用に "YYYY-MM-DDTHH:mm" へ
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
   const pad = (n) => String(n).padStart(2, "0");
@@ -454,118 +434,6 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// ---------- バックアップ・復元 ----------
-
-function downloadBackup(reason = "manual") {
-  const payload = {
-    app: "fuwatto-task",
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    reason,
-    tasks: state.tasks,
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
-  a.href = url;
-  a.download = `fuwatto-backup-${ts}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-  localStorage.setItem(LAST_BACKUP_KEY, String(Date.now()));
-  toast("バックアップを保存しました ♡");
-}
-
-$("#backupBtn").addEventListener("click", () => downloadBackup("manual"));
-
-$("#restoreBtn").addEventListener("click", () => $("#restoreFile").click());
-$("#restoreFile").addEventListener("change", async (e) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  try {
-    const text = await file.text();
-    const obj = JSON.parse(text);
-    const incoming = Array.isArray(obj) ? obj : obj.tasks;
-    if (!Array.isArray(incoming)) throw new Error("形式が不正です");
-    if (!confirm(`復元方法: 「OK」で現在のデータと統合 / 「キャンセル」で中止\n\n読み込むタスク数: ${incoming.length}`)) {
-      e.target.value = "";
-      return;
-    }
-    // 既存と統合（id衝突は updatedAt が新しい方を採用）
-    const map = new Map(state.tasks.map((t) => [t.id, t]));
-    for (const t of incoming) {
-      if (!t || !t.id) continue;
-      const existing = map.get(t.id);
-      if (!existing || (t.updatedAt || 0) >= (existing.updatedAt || 0)) {
-        map.set(t.id, normalizeTask(t));
-      }
-    }
-    state.tasks = Array.from(map.values());
-    saveTasks();
-    render();
-    toast(`復元しました（${state.tasks.length}件）`);
-  } catch (err) {
-    alert("読み込みに失敗しました: " + err.message);
-  } finally {
-    e.target.value = "";
-  }
-});
-
-function normalizeTask(t) {
-  return {
-    id: t.id || uid(),
-    title: t.title || "",
-    details: t.details || "",
-    deadline: t.deadline || "",
-    priority: ["low", "mid", "high"].includes(t.priority) ? t.priority : "mid",
-    status: ["todo", "doing", "done"].includes(t.status) ? t.status : "todo",
-    tags: Array.isArray(t.tags) ? t.tags.filter(Boolean) : [],
-    createdAt: typeof t.createdAt === "number" ? t.createdAt : Date.now(),
-    updatedAt: typeof t.updatedAt === "number" ? t.updatedAt : Date.now(),
-  };
-}
-
-// 週次自動バックアップ
-function maybeWeeklyBackup() {
-  const settings = loadSettings();
-  if (!settings.autoBackup) return;
-  const last = Number(localStorage.getItem(LAST_BACKUP_KEY) || 0);
-  if (Date.now() - last < WEEK_MS) return;
-  if (state.tasks.length === 0) return;
-  downloadBackup("weekly-auto");
-}
-
-// ---------- 設定モーダル ----------
-
-const settingsDialog = $("#settings");
-$("#settingsBtn").addEventListener("click", () => {
-  const s = loadSettings();
-  $("#autoBackup").checked = !!s.autoBackup;
-  settingsDialog.showModal();
-});
-$("#closeSettings").addEventListener("click", () => settingsDialog.close());
-
-$("#saveSettingsBtn").addEventListener("click", () => {
-  const s = loadSettings();
-  s.autoBackup = $("#autoBackup").checked;
-  saveSettings(s);
-  settingsDialog.close();
-  toast("設定を保存しました");
-});
-
-$("#clearLocalBtn").addEventListener("click", () => {
-  if (!confirm("この端末のタスクデータと履歴をすべて削除します。\n（復元用に直前にバックアップを保存することをおすすめします）")) return;
-  downloadBackup("before-clear");
-  localStorage.removeItem(STORAGE_KEY);
-  localStorage.removeItem(HISTORY_KEY);
-  state.tasks = [];
-  render();
-  settingsDialog.close();
-  toast("ローカルデータを消去しました");
-});
-
 // ---------- 同期 ----------
 
 async function reconnectSync() {
@@ -585,7 +453,6 @@ async function reconnectSync() {
   } catch (err) {
     console.error(err);
     setSyncStatus("err", "オフライン（ローカル保存は継続）");
-    toast("同期に失敗しました: " + (err.message || err));
   }
 }
 
@@ -596,8 +463,6 @@ function init() {
   render();
   setSyncStatus("sync", "同期接続中…");
   reconnectSync();
-  maybeWeeklyBackup();
-  // PWA
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js").catch(() => {});
   }

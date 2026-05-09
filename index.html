@@ -22,10 +22,6 @@
     </div>
     <div class="actions">
       <button id="addBtn" class="primary">＋ 新しいタスク</button>
-      <button id="backupBtn" title="JSONでバックアップを保存">⬇ バックアップ</button>
-      <button id="restoreBtn" title="JSONから復元">⬆ 復元</button>
-      <input type="file" id="restoreFile" accept="application/json" hidden />
-      <button id="settingsBtn" title="同期設定">⚙</button>
     </div>
   </header>
 
@@ -114,29 +110,6 @@
         <div class="grow"></div>
         <button type="button" id="cancelBtn">キャンセル</button>
         <button type="submit" class="primary">💾 保存</button>
-      </footer>
-    </form>
-  </dialog>
-
-  <!-- 設定モーダル -->
-  <dialog id="settings" class="modal">
-    <form method="dialog">
-      <header>
-        <h2>設定</h2>
-        <button type="button" class="icon-btn" id="closeSettings" aria-label="閉じる">✕</button>
-      </header>
-      <p class="hint">
-        このアプリは、同じURLを開いた全ての端末で自動的にデータが同期されます。<br>
-        トークンやログインは不要です。新しい端末ではこのページをブックマークするだけでOK。
-      </p>
-      <label class="checkbox">
-        <input type="checkbox" id="autoBackup" />
-        <span>週に一度、自動で JSON バックアップをダウンロードする</span>
-      </label>
-      <footer class="editor-footer">
-        <button type="button" id="clearLocalBtn" class="danger">この端末のキャッシュを消去</button>
-        <div class="grow"></div>
-        <button type="button" id="saveSettingsBtn" class="primary">保存</button>
       </footer>
     </form>
   </dialog>

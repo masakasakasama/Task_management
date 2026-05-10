@@ -517,10 +517,10 @@ main { padding-bottom: 96px !important; }
   backdrop-filter: blur(6px);
 }
 .habits-grid .habit-head {
-  height: 110px;
+  height: 60px;
   vertical-align: bottom;
-  padding: 0 4px;
-  min-width: 36px;
+  padding: 4px 4px 6px;
+  min-width: 70px;
 }
 .habits-grid .habit-label {
   display: flex;
@@ -537,13 +537,10 @@ main { padding-bottom: 96px !important; }
   width: 100%;
 }
 .habits-grid .habit-label .name {
-  writing-mode: vertical-rl;
-  white-space: nowrap;
-  font-size: 12px;
-  letter-spacing: .04em;
-  max-height: 86px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+  word-break: break-word;
   font-weight: 600;
 }
 .habits-grid .habit-label .emoji { font-size: 16px; line-height: 1; }

@@ -3,14 +3,51 @@
 // - Firestore で全端末リアルタイム同期
 // - タスク + Daily 習慣の2機能
 
-import { startSync, stopSync, isSyncActive } from "./sync.js";
+import { startSync, stopSync, isSyncActive, spaceIdFor } from "./sync.js";
 import { startCinnamonBridge } from "./cinnamon-bridge.js";
 
-const STORAGE_KEY = "fuwatto_tasks_v1";
+const STORAGE_KEY_BASE = "fuwatto_tasks_v1";
 const VIEW_KEY = "fuwatto_view_v1";
+const USERS_KEY = "fuwatto_users_v1";
+const CURRENT_USER_KEY = "fuwatto_current_user_v1";
 const PCT_CYCLE = [0, 20, 40, 60, 80, 100];
 
+const DEFAULT_USERS = [
+  { id: "u1", name: "レベッカ", emoji: "🌹" },
+  { id: "u2", name: "ユーザー2", emoji: "👤" },
+];
+
+function loadUsers() {
+  try {
+    const raw = localStorage.getItem(USERS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length >= 2) return parsed;
+    }
+  } catch {}
+  return DEFAULT_USERS.slice();
+}
+
+function saveUsers(users) {
+  localStorage.setItem(USERS_KEY, JSON.stringify(users));
+}
+
+function getCurrentUserId() {
+  return localStorage.getItem(CURRENT_USER_KEY) || "u1";
+}
+
+function setCurrentUserIdLS(id) {
+  localStorage.setItem(CURRENT_USER_KEY, id);
+}
+
+function storageKeyFor(userId) {
+  // u1 は既存データを温存するためサフィックス無し
+  return userId === "u1" ? STORAGE_KEY_BASE : `${STORAGE_KEY_BASE}__${userId}`;
+}
+
 const state = {
+  users: loadUsers(),
+  currentUserId: getCurrentUserId(),
   tasks: /** @type {Task[]} */ ([]),
   habits: /** @type {Habit[]} */ ([]),
   filter: { search: "", pf: "all" },
@@ -20,6 +57,10 @@ const state = {
   habitYear: new Date().getFullYear(),
   habitMonth: new Date().getMonth(),
 };
+
+function currentUser() {
+  return state.users.find((u) => u.id === state.currentUserId) || state.users[0];
+}
 
 /**
  * @typedef {Object} Task
@@ -45,9 +86,9 @@ const state = {
 
 // ---------- ストレージ ----------
 
-function loadAll() {
+function loadAll(userId = state.currentUserId) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKeyFor(userId));
     if (!raw) return { tasks: [], habits: [] };
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) return { tasks: parsed, habits: [] };
@@ -62,7 +103,7 @@ function loadAll() {
 
 function saveAll(showStatus = true) {
   localStorage.setItem(
-    STORAGE_KEY,
+    storageKeyFor(state.currentUserId),
     JSON.stringify({ tasks: state.tasks, habits: state.habits })
   );
   if (showStatus) setSyncStatus("ok", isSyncActive() ? "保存・同期済み" : "この端末に保存済み");
@@ -1093,12 +1134,13 @@ async function reconnectSync() {
   try {
     setSyncStatus("sync", "同期接続中…");
     await startSync({
+      spaceId: spaceIdFor(state.currentUserId),
       getState: () => ({ tasks: state.tasks, habits: state.habits }),
       onRemote: ({ tasks, habits }) => {
         state.tasks = (tasks || []).map(normalizeTask);
         state.habits = (habits || []).map(normalizeHabit);
         localStorage.setItem(
-          STORAGE_KEY,
+          storageKeyFor(state.currentUserId),
           JSON.stringify({ tasks: state.tasks, habits: state.habits })
         );
         render();
@@ -1112,6 +1154,74 @@ async function reconnectSync() {
     console.error(err);
     setSyncStatus("err", "オフライン（ローカル保存は継続）");
   }
+}
+
+async function switchUser(newUserId) {
+  if (newUserId === state.currentUserId) return;
+  state.currentUserId = newUserId;
+  setCurrentUserIdLS(newUserId);
+  // 新ユーザーのローカルキャッシュを読み込み
+  const saved = loadAll(newUserId);
+  state.tasks = saved.tasks.map(normalizeTask);
+  state.habits = saved.habits.map(normalizeHabit);
+  // UI即時反映
+  updateUserUI();
+  render();
+  renderHabits();
+  renderToday();
+  // 新Firestoreドキュメントへ再接続
+  await reconnectSync();
+}
+
+function updateUserUI() {
+  const u = currentUser();
+  $("#userEmoji").textContent = u.emoji || "👤";
+  $("#userName").textContent = u.name;
+}
+
+function renderUserMenu() {
+  const menu = $("#userMenu");
+  menu.innerHTML = "";
+  for (const u of state.users) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "user-menu-item" + (u.id === state.currentUserId ? " active" : "");
+    btn.dataset.user = u.id;
+    btn.innerHTML = `
+      <span class="ue">${escapeHtml(u.emoji || "👤")}</span>
+      <span class="un">${escapeHtml(u.name)}</span>
+      ${u.id === state.currentUserId ? '<span class="check">✓</span>' : ''}
+    `;
+    btn.addEventListener("click", () => {
+      menu.hidden = true;
+      switchUser(u.id);
+    });
+    menu.appendChild(btn);
+  }
+  // 名前編集
+  const sep = document.createElement("hr");
+  menu.appendChild(sep);
+  const renameBtn = document.createElement("button");
+  renameBtn.type = "button";
+  renameBtn.className = "user-menu-item rename";
+  renameBtn.innerHTML = "✎ ユーザー名を編集";
+  renameBtn.addEventListener("click", () => {
+    menu.hidden = true;
+    promptRenameUsers();
+  });
+  menu.appendChild(renameBtn);
+}
+
+function promptRenameUsers() {
+  for (const u of state.users) {
+    const newName = prompt(`「${u.name}」の新しい名前を入力（キャンセルで変更なし）`, u.name);
+    if (newName !== null && newName.trim()) u.name = newName.trim();
+    const newEmoji = prompt(`「${u.name}」の絵文字（1文字、空欄で変更なし）`, u.emoji || "");
+    if (newEmoji !== null && newEmoji.trim()) u.emoji = newEmoji.trim();
+  }
+  saveUsers(state.users);
+  updateUserUI();
+  renderUserMenu();
 }
 
 // ---------- 起動 ----------
@@ -1129,6 +1239,19 @@ function init() {
   applyTheme(savedTheme || "light");
   $("#themeBtn").addEventListener("click", () => {
     applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+  });
+
+  // ユーザーセレクタ
+  updateUserUI();
+  renderUserMenu();
+  $("#userBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const menu = $("#userMenu");
+    menu.hidden = !menu.hidden;
+  });
+  document.addEventListener("click", (e) => {
+    const menu = $("#userMenu");
+    if (!menu.hidden && !e.target.closest("#userSelector")) menu.hidden = true;
   });
 
   const saved = loadAll();

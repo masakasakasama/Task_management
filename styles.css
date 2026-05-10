@@ -1087,3 +1087,59 @@ main { padding-bottom: 96px !important; }
   .row-title { font-size: 14px; }
   .row-details { font-size: 12px; }
 }
+
+/* ===================== ユーザーセレクタ ===================== */
+.user-selector { position: relative; }
+.user-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 6px 8px;
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  border: 1px solid transparent;
+}
+.user-pill:hover { border-color: var(--pink-soft); }
+.user-pill .caret { font-size: 10px; color: var(--ink-soft); margin-left: 2px; }
+.user-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 180px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 10px 30px rgba(168, 137, 255, 0.18);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 100;
+  animation: pop .15s ease;
+}
+.user-menu hr { border: none; border-top: 1px solid var(--line); margin: 4px 0; width: 100%; }
+.user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--ink);
+  text-align: left;
+  box-shadow: none;
+  cursor: pointer;
+}
+.user-menu-item:hover { background: var(--bg-2); }
+.user-menu-item.active { background: var(--pink-soft); }
+.user-menu-item .ue { font-size: 16px; }
+.user-menu-item .un { flex: 1; font-weight: 600; }
+.user-menu-item .check { color: var(--pink); font-weight: 700; }
+.user-menu-item.rename { color: var(--ink-soft); font-size: 12px; }

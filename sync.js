@@ -5,7 +5,7 @@
 // - 認証なし、トークンなし、入力欄なし
 // - セキュリティ: Firestore ルールで「24文字以上のドキュメントID」のみ許可
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import {
   getFirestore,
   doc,
@@ -24,7 +24,12 @@ const firebaseConfig = {
 };
 
 const COLLECTION = "spaces";
-const SPACE_ID = "masakasakasama-task-management-2026-private-space";
+const BASE_SPACE_ID = "masakasakasama-task-management-2026-private-space";
+
+export function spaceIdFor(userId) {
+  // 既存データを温存するため u1 はサフィックス無し
+  return userId === "u1" ? BASE_SPACE_ID : `${BASE_SPACE_ID}-${userId}`;
+}
 
 let app = null;
 let db = null;
@@ -42,15 +47,16 @@ export function isSyncActive() {
   return active;
 }
 
-export async function startSync({ getState, onRemote, onStatus }) {
+export async function startSync({ spaceId, getState, onRemote, onStatus }) {
   stopSync();
   getStateRef = getState;
   onRemoteRef = onRemote;
   onStatusRef = onStatus;
 
-  app = initializeApp(firebaseConfig);
+  // 既存の default app を再利用（switchUser での再初期化を許容）
+  app = getApps().find((a) => a.name === "[DEFAULT]") || initializeApp(firebaseConfig);
   db = getFirestore(app);
-  docRef = doc(db, COLLECTION, SPACE_ID);
+  docRef = doc(db, COLLECTION, spaceId || BASE_SPACE_ID);
 
   onStatus("sync", "同期接続中…");
 

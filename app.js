@@ -772,7 +772,8 @@ function renderHabits() {
     th.dataset.id = h.id;
     const label = document.createElement("button");
     label.type = "button";
-    label.className = "habit-label";
+    const isDefaultEmoji = !h.emoji || h.emoji === "⭐";
+    label.className = "habit-label" + (isDefaultEmoji ? " default-emoji" : "");
     label.dataset.id = h.id;
     label.setAttribute("aria-label", `${h.name} を編集`);
     const streak = calculateStreak(h);

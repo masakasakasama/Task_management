@@ -524,20 +524,19 @@ main { padding-bottom: 96px !important; }
   text-align: center;
 }
 .habits-grid .habit-label {
-  display: flex;
+  display: inline-flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 6px;
   background: none;
   border: none;
-  padding: 4px;
+  padding: 4px 6px;
   box-shadow: none;
   cursor: pointer;
   color: var(--ink);
   border-radius: 8px;
-  width: 100%;
-  height: 100%;
+  text-align: center;
 }
 .habits-grid .habit-label .name {
   /* 縦書き（右側が下=text-orientation: sideways）*/

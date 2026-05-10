@@ -1105,6 +1105,7 @@ main { padding-bottom: 96px !important; }
 }
 .user-pill:hover { border-color: var(--pink-soft); }
 .user-pill .caret { font-size: 10px; color: var(--ink-soft); margin-left: 2px; }
+.user-menu[hidden] { display: none; }
 .user-menu {
   position: absolute;
   top: calc(100% + 6px);

@@ -539,9 +539,9 @@ main { padding-bottom: 96px !important; }
   text-align: center;
 }
 .habits-grid .habit-label .name {
-  /* 縦書き（右側が下=text-orientation: sideways）*/
+  /* 日本語は正立で縦書き、英語は横倒し（mixed = CJK上向き、Latinは横倒し）*/
   writing-mode: vertical-rl;
-  text-orientation: sideways;
+  text-orientation: mixed;
   white-space: nowrap;
   font-size: 12px;
   font-weight: 600;

@@ -1003,8 +1003,90 @@ function setHabitEntry(habitId, dateKey, pct, cell) {
 const habitEditor = $("#habitEditor");
 const habitEditorForm = $("#habitEditorForm");
 
+// 名前 → オススメ絵文字 の辞書（部分一致・大文字小文字無視）
+const EMOJI_SUGGESTIONS = [
+  // ワークアウト
+  { keys: ["ワークアウト", "workout", "筋トレ", "training", "exercise", "エクササイズ"], emoji: "💪" },
+  { keys: ["ランニング", "running", "ジョギング", "jog", "走る"], emoji: "🏃" },
+  { keys: ["ウォーキング", "walk", "散歩", "歩く"], emoji: "🚶" },
+  { keys: ["ヨガ", "yoga", "ストレッチ", "stretch"], emoji: "🧘" },
+  { keys: ["腹筋", "situp", "abs", "クランチ"], emoji: "🤸" },
+  { keys: ["スクワット", "squat"], emoji: "🦵" },
+  { keys: ["腕立て", "pushup", "push-up", "push up"], emoji: "💪" },
+  { keys: ["プランク", "plank"], emoji: "🪵" },
+  { keys: ["バーピー", "burpee"], emoji: "🔥" },
+  { keys: ["有酸素", "aerobic", "cardio"], emoji: "🫀" },
+  { keys: ["自転車", "bike", "cycle", "サイクリング", "サイクル"], emoji: "🚴" },
+  // 健康・水・睡眠
+  { keys: ["水", "water", "drink", "飲む", "hydrate"], emoji: "💧" },
+  { keys: ["睡眠", "sleep", "早寝", "寝る", "ベッド"], emoji: "😴" },
+  { keys: ["朝", "morning", "起床", "起きる"], emoji: "🌅" },
+  { keys: ["夜", "night", "evening"], emoji: "🌙" },
+  { keys: ["瞑想", "meditat", "mindful", "マインドフル"], emoji: "🧘" },
+  { keys: ["薬", "medicine", "サプリ", "supplement", "ビタミン", "vitamin"], emoji: "💊" },
+  { keys: ["歯磨き", "歯", "tooth", "brush"], emoji: "🦷" },
+  // 食
+  { keys: ["食事", "meal", "ご飯", "ごはん", "breakfast", "lunch", "dinner", "朝食", "昼食", "夕食"], emoji: "🍽️" },
+  { keys: ["コーヒー", "coffee"], emoji: "☕" },
+  { keys: ["お茶", "tea", "緑茶"], emoji: "🍵" },
+  { keys: ["野菜", "vegetable", "サラダ", "salad"], emoji: "🥗" },
+  { keys: ["果物", "fruit", "リンゴ"], emoji: "🍎" },
+  { keys: ["プロテイン", "protein"], emoji: "🥚" },
+  { keys: ["お菓子", "sweet", "間食", "snack"], emoji: "🍪" },
+  { keys: ["禁酒", "禁煙", "no drink", "no smoke"], emoji: "🚫" },
+  // 学習
+  { keys: ["読書", "book", "本", "reading", "read"], emoji: "📚" },
+  { keys: ["勉強", "study", "学習", "vokabeln", "vocab", "language", "語学", "英語", "english"], emoji: "📖" },
+  { keys: ["ドイツ語", "german", "deutsch"], emoji: "🇩🇪" },
+  { keys: ["フランス語", "french", "français"], emoji: "🇫🇷" },
+  { keys: ["スペイン語", "spanish", "español"], emoji: "🇪🇸" },
+  { keys: ["プログラミング", "coding", "code", "プログラム"], emoji: "💻" },
+  { keys: ["メモ", "note", "日記", "journal", "ジャーナル", "writing", "write", "書く"], emoji: "📝" },
+  { keys: ["ニュース", "news"], emoji: "📰" },
+  // 創作
+  { keys: ["音楽", "music", "歌", "sing", "ピアノ", "piano", "ギター", "guitar"], emoji: "🎵" },
+  { keys: ["絵", "draw", "drawing", "art", "アート", "イラスト"], emoji: "🎨" },
+  { keys: ["写真", "photo", "カメラ"], emoji: "📷" },
+  { keys: ["映画", "movie", "ドラマ"], emoji: "🎬" },
+  // 仕事
+  { keys: ["仕事", "work", "業務", "ビジネス"], emoji: "💼" },
+  { keys: ["メール", "email", "mail"], emoji: "📧" },
+  { keys: ["会議", "meeting", "ミーティング"], emoji: "🤝" },
+  // 家事
+  { keys: ["掃除", "clean", "家事"], emoji: "🧹" },
+  { keys: ["洗濯", "laundry"], emoji: "🧺" },
+  { keys: ["料理", "cook", "クッキング"], emoji: "🍳" },
+  { keys: ["買い物", "shop"], emoji: "🛒" },
+  // 趣味・気分
+  { keys: ["旅行", "travel", "trip"], emoji: "✈️" },
+  { keys: ["ゲーム", "game"], emoji: "🎮" },
+  { keys: ["ペット", "犬", "dog"], emoji: "🐶" },
+  { keys: ["猫", "cat"], emoji: "🐱" },
+  { keys: ["花", "flower", "ガーデニング", "garden"], emoji: "🌸" },
+  { keys: ["お金", "money", "貯金", "saving", "節約"], emoji: "💰" },
+];
+
+function suggestEmoji(name) {
+  if (!name) return null;
+  const n = name.toLowerCase();
+  for (const s of EMOJI_SUGGESTIONS) {
+    for (const k of s.keys) {
+      if (n.includes(k.toLowerCase())) return s.emoji;
+    }
+  }
+  return null;
+}
+
+let _userTouchedEmoji = false;
+
+function setEmojiSuggested(isSuggested) {
+  $("#h-emoji").classList.toggle("is-suggested", isSuggested);
+  $("#emojiSuggestionHint").classList.toggle("show", isSuggested);
+}
+
 function openHabitEditor(id) {
   state.editingHabitId = id || null;
+  _userTouchedEmoji = false;
   if (id) {
     const h = state.habits.find((x) => x.id === id);
     if (!h) return;
@@ -1012,15 +1094,38 @@ function openHabitEditor(id) {
     $("#h-emoji").value = h.emoji || "";
     $("#h-name").value = h.name || "";
     $("#deleteHabitBtn").style.display = "";
+    _userTouchedEmoji = true; // 既存編集時は手動扱い（自動上書きしない）
+    setEmojiSuggested(false);
   } else {
     $("#habitEditorTitle").textContent = "新しい習慣";
-    $("#h-emoji").value = "⭐";
+    $("#h-emoji").value = "";
     $("#h-name").value = "";
     $("#deleteHabitBtn").style.display = "none";
+    setEmojiSuggested(false);
   }
   habitEditor.showModal();
   setTimeout(() => $("#h-name").focus(), 30);
 }
+
+// 絵文字をユーザーが手動編集したらフラグを立てる
+$("#h-emoji").addEventListener("input", () => {
+  _userTouchedEmoji = true;
+  setEmojiSuggested(false);
+});
+
+// 名前変更時に未編集ならオススメ絵文字を入れる
+$("#h-name").addEventListener("input", () => {
+  if (_userTouchedEmoji) return;
+  const suggested = suggestEmoji($("#h-name").value);
+  if (suggested) {
+    $("#h-emoji").value = suggested;
+    setEmojiSuggested(true);
+  } else if ($("#h-emoji").classList.contains("is-suggested")) {
+    // 直前にオススメで埋めていたが、新しい名前に合うものがない → クリア
+    $("#h-emoji").value = "";
+    setEmojiSuggested(false);
+  }
+});
 
 function closeHabitEditor() {
   if (habitEditor.open) habitEditor.close();
@@ -1030,7 +1135,9 @@ function closeHabitEditor() {
 habitEditorForm.addEventListener("submit", (e) => {
   e.preventDefault();
   const name = $("#h-name").value.trim();
-  const emoji = $("#h-emoji").value.trim() || "⭐";
+  // 絵文字: ユーザーが入力したならそれ、空ならオススメ、なければ空文字
+  let emoji = $("#h-emoji").value.trim();
+  if (!emoji) emoji = suggestEmoji(name) || "";
   if (!name) return;
   const now = Date.now();
   if (state.editingHabitId) {

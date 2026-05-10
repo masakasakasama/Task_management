@@ -551,7 +551,7 @@ main { padding-bottom: 96px !important; }
   letter-spacing: .04em;
 }
 .habits-grid .habit-label .emoji { font-size: 16px; line-height: 1; }
-.habits-grid .habit-label.default-emoji .emoji { opacity: .25; }
+.habits-grid .habit-label.default-emoji .emoji { opacity: .12; filter: grayscale(0.6); }
 .habits-grid .habit-label:hover { background: rgba(255, 143, 185, 0.1); }
 
 .habits-grid .day-col {
@@ -1149,3 +1149,23 @@ main { padding-bottom: 96px !important; }
 .user-menu-item .un { flex: 1; font-weight: 600; }
 .user-menu-item .check { color: var(--pink); font-weight: 700; }
 .user-menu-item.rename { color: var(--ink-soft); font-size: 12px; }
+
+/* 絵文字オススメ表示 */
+.suggestion-hint {
+  display: none;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--pink-soft), var(--bg-2));
+  color: #8a395f;
+  font-weight: 700;
+  margin-left: 6px;
+  vertical-align: middle;
+  animation: pop .2s ease;
+}
+.suggestion-hint.show { display: inline-block; }
+#h-emoji.is-suggested {
+  border-style: dashed;
+  border-color: var(--pink);
+  color: var(--ink-soft);
+}

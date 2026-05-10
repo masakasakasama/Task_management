@@ -517,9 +517,9 @@ main { padding-bottom: 96px !important; }
   backdrop-filter: blur(6px);
 }
 .habits-grid .habit-head {
-  height: 110px;
+  min-height: 110px;
   vertical-align: middle;
-  padding: 6px 4px;
+  padding: 6px 4px 8px;
   min-width: 44px;
   text-align: center;
 }
@@ -545,9 +545,6 @@ main { padding-bottom: 96px !important; }
   white-space: nowrap;
   font-size: 12px;
   font-weight: 600;
-  max-height: 80px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   letter-spacing: .04em;
 }
 .habits-grid .habit-label .emoji { font-size: 16px; line-height: 1; }

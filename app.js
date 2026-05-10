@@ -6,7 +6,7 @@
 import { startSync, stopSync, isSyncActive, spaceIdFor, startUsersSync, pushUsers } from "./sync.js";
 import { startCinnamonBridge } from "./cinnamon-bridge.js";
 
-const APP_VERSION = "v20";
+const APP_VERSION = "v21";
 const STORAGE_KEY_BASE = "fuwatto_tasks_v1";
 const VIEW_KEY = "fuwatto_view_v1";
 const USERS_KEY = "fuwatto_users_v1";

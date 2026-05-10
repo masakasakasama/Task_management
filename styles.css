@@ -1179,3 +1179,12 @@ main { padding-bottom: 96px !important; }
   font-family: ui-monospace, SFMono-Regular, monospace;
   letter-spacing: .04em;
 }
+
+/* 横向き（landscape）時の調整 */
+@media (orientation: landscape) and (max-height: 500px) {
+  .topbar { padding: 8px 16px; }
+  main { padding-top: 8px; padding-bottom: 70px !important; }
+  .tabs { padding: 6px 16px calc(6px + env(safe-area-inset-bottom)) 16px; }
+  .tab { padding: 6px 14px; font-size: 12px; }
+  .habits-grid-wrap { max-height: 60vh; }
+}

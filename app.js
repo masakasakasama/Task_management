@@ -1278,6 +1278,17 @@ async function switchUser(newUserId) {
   render();
   renderHabits();
   renderToday();
+  // シナモン連携バッジ: u1以外なら非表示
+  const badge = $("#cinnamonStatus");
+  if (badge) {
+    if (newUserId !== "u1") {
+      badge.dataset.kind = "none";
+      badge.textContent = "";
+    } else {
+      badge.dataset.kind = "sync";
+      badge.textContent = "🥗 シナモン同期中…";
+    }
+  }
   // 新Firestoreドキュメントへ再接続
   await reconnectSync();
 }
@@ -1401,8 +1412,10 @@ function init() {
   });
 
   // cinnamon-workout 連携: 過去〜今日の達成率をワークアウト習慣に反映
+  // ※ レベッカ（u1）専用 — 達也（u2）など他ユーザーには反映しない
   startCinnamonBridge(
     (nameKeywords, progressByDate) => {
+      if (state.currentUserId !== "u1") return; // u1以外は無視
       const target = state.habits.find((h) =>
         nameKeywords.some((k) => (h.name || "").toLowerCase().includes(k.toLowerCase()))
       );
@@ -1438,6 +1451,12 @@ function init() {
     (status) => {
       const badge = $("#cinnamonStatus");
       if (!badge) return;
+      // u1以外ならバッジ非表示
+      if (state.currentUserId !== "u1") {
+        badge.dataset.kind = "none";
+        badge.textContent = "";
+        return;
+      }
       badge.dataset.kind = status.kind;
       badge.textContent = "🥗 " + status.text;
     }

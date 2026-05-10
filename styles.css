@@ -517,12 +517,15 @@ main { padding-bottom: 96px !important; }
   backdrop-filter: blur(6px);
 }
 .habits-grid .habit-head {
-  min-height: 110px;
   vertical-align: middle;
   padding: 6px 4px 8px;
   min-width: 44px;
   text-align: center;
+  overflow: visible;
+  height: auto;
 }
+.habits-grid thead th { overflow: visible; }
+.habits-grid .habit-label .name { max-height: none !important; }
 .habits-grid .habit-label {
   display: inline-flex;
   flex-direction: column;
@@ -1165,4 +1168,14 @@ main { padding-bottom: 96px !important; }
   border-style: dashed;
   border-color: var(--pink);
   color: var(--ink-soft);
+}
+
+.version-tag {
+  margin: 4px 0 0;
+  text-align: center;
+  font-size: 9px;
+  color: var(--ink-soft);
+  opacity: .35;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  letter-spacing: .04em;
 }

@@ -31,6 +31,57 @@ export function spaceIdFor(userId) {
   return userId === "u1" ? BASE_SPACE_ID : `${BASE_SPACE_ID}-${userId}`;
 }
 
+const USERS_META_ID = `${BASE_SPACE_ID}-users-meta`;
+let usersUnsub = null;
+
+function ensureApp() {
+  return getApps().find((a) => a.name === "[DEFAULT]") || initializeApp(firebaseConfig);
+}
+
+/** ユーザー一覧（名前・絵文字）を全端末同期する */
+export async function startUsersSync({ getUsers, onRemote, onStatus }) {
+  stopUsersSync();
+  try {
+    const a = ensureApp();
+    const d = getFirestore(a);
+    const ref = doc(d, COLLECTION, USERS_META_ID);
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const data = snap.data();
+      if (Array.isArray(data.users) && data.users.length > 0) onRemote(data.users);
+    } else {
+      // 初期化: ローカル既定値を書き込む
+      await setDoc(ref, { users: getUsers(), updatedAt: Date.now() });
+    }
+    usersUnsub = onSnapshot(
+      ref,
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        if (Array.isArray(data.users) && data.users.length > 0) onRemote(data.users);
+      },
+      (err) => onStatus && onStatus("err", "ユーザー同期エラー: " + (err.code || err.message))
+    );
+  } catch (err) {
+    onStatus && onStatus("err", "ユーザー同期初期化失敗: " + err.message);
+  }
+}
+
+export function stopUsersSync() {
+  if (usersUnsub) {
+    try { usersUnsub(); } catch {}
+    usersUnsub = null;
+  }
+}
+
+/** ユーザー一覧をFirestoreへ送信 */
+export async function pushUsers(users) {
+  const a = ensureApp();
+  const d = getFirestore(a);
+  const ref = doc(d, COLLECTION, USERS_META_ID);
+  await setDoc(ref, { users, updatedAt: Date.now() }, { merge: true });
+}
+
 let app = null;
 let db = null;
 let docRef = null;

@@ -3,7 +3,7 @@
 // - Firestore で全端末リアルタイム同期
 // - タスク + Daily 習慣の2機能
 
-import { startSync, stopSync, isSyncActive, spaceIdFor } from "./sync.js";
+import { startSync, stopSync, isSyncActive, spaceIdFor, startUsersSync, pushUsers } from "./sync.js";
 import { startCinnamonBridge } from "./cinnamon-bridge.js";
 
 const STORAGE_KEY_BASE = "fuwatto_tasks_v1";
@@ -1164,8 +1164,9 @@ async function switchUser(newUserId) {
   const saved = loadAll(newUserId);
   state.tasks = saved.tasks.map(normalizeTask);
   state.habits = saved.habits.map(normalizeHabit);
-  // UI即時反映
+  // UI即時反映 + メニューの ✓ 位置を更新
   updateUserUI();
+  renderUserMenu();
   render();
   renderHabits();
   renderToday();
@@ -1222,6 +1223,11 @@ function promptRenameUsers() {
   saveUsers(state.users);
   updateUserUI();
   renderUserMenu();
+  // 全端末へ反映
+  pushUsers(state.users).catch((err) => {
+    console.warn("[users] push failed:", err);
+    toast("ユーザー名の同期に失敗（ローカルには保存済み）");
+  });
 }
 
 // ---------- 起動 ----------
@@ -1264,6 +1270,27 @@ function init() {
   renderToday();
   setSyncStatus("sync", "同期接続中…");
   reconnectSync();
+
+  // ユーザー名・絵文字を全端末同期
+  startUsersSync({
+    getUsers: () => state.users,
+    onRemote: (remoteUsers) => {
+      // 同じだったらスキップ
+      const cur = JSON.stringify(state.users);
+      const next = JSON.stringify(remoteUsers);
+      if (cur === next) return;
+      state.users = remoteUsers;
+      saveUsers(state.users);
+      // 現在ユーザーが消えていた場合は先頭にフォールバック
+      if (!state.users.find((u) => u.id === state.currentUserId)) {
+        state.currentUserId = state.users[0].id;
+        setCurrentUserIdLS(state.currentUserId);
+      }
+      updateUserUI();
+      renderUserMenu();
+    },
+    onStatus: () => {},
+  });
 
   // cinnamon-workout 連携: 過去〜今日の達成率をワークアウト習慣に反映
   startCinnamonBridge(

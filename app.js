@@ -6,7 +6,7 @@
 import { startSync, stopSync, isSyncActive, spaceIdFor, startUsersSync, pushUsers } from "./sync.js";
 import { startCinnamonBridge } from "./cinnamon-bridge.js";
 
-const APP_VERSION = "v19";
+const APP_VERSION = "v20";
 const STORAGE_KEY_BASE = "fuwatto_tasks_v1";
 const VIEW_KEY = "fuwatto_view_v1";
 const USERS_KEY = "fuwatto_users_v1";
@@ -1589,10 +1589,10 @@ function init() {
   const vt = $("#versionTag");
   if (vt) vt.textContent = APP_VERSION;
 
-  // 画面回転ロックを明示的に解除（PWAインストール時の orientation lock を上書き）
+  // 画面は縦固定（manifestで portrait 指定）
   try {
-    if (screen.orientation && typeof screen.orientation.unlock === "function") {
-      screen.orientation.unlock();
+    if (screen.orientation && typeof screen.orientation.lock === "function") {
+      screen.orientation.lock("portrait").catch(() => {});
     }
   } catch {}
 

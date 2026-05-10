@@ -13,8 +13,7 @@ const PCT_CYCLE = [0, 20, 40, 60, 80, 100];
 const state = {
   tasks: /** @type {Task[]} */ ([]),
   habits: /** @type {Habit[]} */ ([]),
-  filter: { search: "", status: "all", priority: "all" },
-  sort: "deadline",
+  filter: { search: "", pf: "all" },
   editingId: null,
   editingHabitId: null,
   view: "tasks",
@@ -234,125 +233,227 @@ function cyclePct(current) {
 // ---------- タスク描画 ----------
 
 function render() {
-  const cols = {
-    todo: $("#col-todo"),
-    doing: $("#col-doing"),
-    done: $("#col-done"),
-  };
-  Object.values(cols).forEach((c) => (c.innerHTML = ""));
-  const counts = { todo: 0, doing: 0, done: 0 };
+  const container = $("#taskSections");
+  container.innerHTML = "";
 
-  const filtered = filterAndSort(state.tasks);
-  for (const task of filtered) {
-    cols[task.status].appendChild(renderCard(task));
-    counts[task.status]++;
+  const filtered = filterTasks(state.tasks);
+  const groups = groupTasksByDate(filtered);
+
+  const sectionDefs = [
+    { key: "overdue", label: "⚠️ 期限切れ", className: "overdue" },
+    { key: "doing", label: "⚡ 進行中", className: "doing" },
+    { key: "today", label: "🌅 今日", className: "today" },
+    { key: "tomorrow", label: "📆 明日" },
+    { key: "thisWeek", label: "📅 今週中" },
+    { key: "nextWeek", label: "🗓️ 来週" },
+    { key: "later", label: "🌙 それ以降" },
+    { key: "noDeadline", label: "🌫️ 期限なし" },
+    { key: "done", label: "✓ 完了", className: "done", collapsedDefault: true },
+  ];
+
+  let total = 0;
+  for (const def of sectionDefs) {
+    const list = groups[def.key] || [];
+    if (list.length === 0) continue;
+    total += list.length;
+    container.appendChild(renderTaskSection(def, list));
   }
-  $("#count-todo").textContent = counts.todo;
-  $("#count-doing").textContent = counts.doing;
-  $("#count-done").textContent = counts.done;
+
+  $("#tasksEmpty").hidden = total > 0;
 }
 
-function filterAndSort(tasks) {
-  const { search, status, priority } = state.filter;
-  const q = search.trim().toLowerCase();
-  let list = tasks.filter((t) => {
-    if (status !== "all" && t.status !== status) return false;
-    if (priority !== "all" && t.priority !== priority) return false;
+function filterTasks(tasks) {
+  const { search, pf } = state.filter;
+  const q = (search || "").trim().toLowerCase();
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfTomorrow = new Date(startOfToday);
+  startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+
+  return tasks.filter((t) => {
     if (q) {
       const blob = (t.title + " " + t.details + " " + (t.tags || []).join(" ")).toLowerCase();
       if (!blob.includes(q)) return false;
     }
-    return true;
-  });
-  const sortBy = state.sort;
-  list.sort((a, b) => {
-    if (sortBy === "deadline") {
-      const av = a.deadline ? new Date(a.deadline).getTime() : Infinity;
-      const bv = b.deadline ? new Date(b.deadline).getTime() : Infinity;
-      if (av !== bv) return av - bv;
-      return priorityRank(a.priority) - priorityRank(b.priority);
+    switch (pf) {
+      case "overdue":
+        if (t.status === "done") return false;
+        if (!t.deadline) return false;
+        return new Date(t.deadline) < startOfToday;
+      case "today": {
+        if (t.status === "done") return false;
+        if (!t.deadline) return false;
+        const dl = new Date(t.deadline);
+        return dl >= startOfToday && dl < startOfTomorrow;
+      }
+      case "doing":
+        return t.status === "doing";
+      case "high":
+        return t.priority === "high" && t.status !== "done";
+      case "all":
+      default:
+        return true;
     }
-    if (sortBy === "priority") {
-      const r = priorityRank(a.priority) - priorityRank(b.priority);
-      if (r !== 0) return r;
-      const av = a.deadline ? new Date(a.deadline).getTime() : Infinity;
-      const bv = b.deadline ? new Date(b.deadline).getTime() : Infinity;
-      return av - bv;
-    }
-    if (sortBy === "created") return b.createdAt - a.createdAt;
-    if (sortBy === "updated") return b.updatedAt - a.updatedAt;
-    return 0;
   });
-  return list;
 }
 
-function renderCard(task) {
-  const el = document.createElement("article");
-  el.className = "card";
-  el.draggable = true;
-  el.dataset.id = task.id;
-  el.tabIndex = 0;
+function groupTasksByDate(tasks) {
+  const groups = {
+    overdue: [],
+    doing: [],
+    today: [],
+    tomorrow: [],
+    thisWeek: [],
+    nextWeek: [],
+    later: [],
+    noDeadline: [],
+    done: [],
+  };
+
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfTomorrow = new Date(startOfToday);
+  startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+  const startOfDayAfterTomorrow = new Date(startOfTomorrow);
+  startOfDayAfterTomorrow.setDate(startOfDayAfterTomorrow.getDate() + 1);
+  // 今週末 (今週土曜の23:59) - 日曜始まりの週
+  const dayOfWeek = startOfToday.getDay();
+  const daysToSat = (6 - dayOfWeek + 7) % 7;
+  const endOfThisWeek = new Date(startOfToday);
+  endOfThisWeek.setDate(endOfThisWeek.getDate() + daysToSat);
+  endOfThisWeek.setHours(23, 59, 59, 999);
+  const endOfNextWeek = new Date(endOfThisWeek);
+  endOfNextWeek.setDate(endOfNextWeek.getDate() + 7);
+
+  for (const t of tasks) {
+    if (t.status === "done") {
+      groups.done.push(t);
+      continue;
+    }
+    if (t.status === "doing") {
+      groups.doing.push(t);
+      continue;
+    }
+    if (!t.deadline) {
+      groups.noDeadline.push(t);
+      continue;
+    }
+    const dl = new Date(t.deadline);
+    if (dl < startOfToday) groups.overdue.push(t);
+    else if (dl < startOfTomorrow) groups.today.push(t);
+    else if (dl < startOfDayAfterTomorrow) groups.tomorrow.push(t);
+    else if (dl <= endOfThisWeek) groups.thisWeek.push(t);
+    else if (dl <= endOfNextWeek) groups.nextWeek.push(t);
+    else groups.later.push(t);
+  }
+
+  // 各セクション内で 優先度 → 期限の順に整列
+  const cmp = (a, b) => {
+    const pr = priorityRank(a.priority) - priorityRank(b.priority);
+    if (pr !== 0) return pr;
+    const av = a.deadline ? new Date(a.deadline).getTime() : Infinity;
+    const bv = b.deadline ? new Date(b.deadline).getTime() : Infinity;
+    if (av !== bv) return av - bv;
+    return b.updatedAt - a.updatedAt;
+  };
+  for (const k of Object.keys(groups)) groups[k].sort(cmp);
+  // 完了は更新が新しい順
+  groups.done.sort((a, b) => b.updatedAt - a.updatedAt);
+  return groups;
+}
+
+function renderTaskSection(def, tasks) {
+  const sec = document.createElement("section");
+  sec.className = "task-section" + (def.className ? " " + def.className : "");
+  if (def.collapsedDefault) sec.classList.add("collapsed");
+  sec.dataset.sec = def.key;
+
+  const head = document.createElement("button");
+  head.type = "button";
+  head.className = "section-head";
+  head.innerHTML = `
+    <span class="section-toggle">▾</span>
+    <span class="section-label">${def.label}</span>
+    <span class="section-count">${tasks.length}</span>
+  `;
+  head.addEventListener("click", () => sec.classList.toggle("collapsed"));
+
+  const list = document.createElement("div");
+  list.className = "section-list";
+  for (const t of tasks) list.appendChild(renderTaskRow(t));
+
+  sec.appendChild(head);
+  sec.appendChild(list);
+  return sec;
+}
+
+function renderTaskRow(task) {
+  const row = document.createElement("article");
+  row.className = "task-row";
+  if (task.status === "done") row.classList.add("done");
+  if (task.status === "doing") row.classList.add("doing");
+  if (task.priority === "high" && task.status !== "done") row.classList.add("high");
+  row.dataset.id = task.id;
+  row.tabIndex = 0;
 
   const dl = fmtDeadline(task.deadline);
-  const tagsHtml = (task.tags || [])
-    .filter(Boolean)
-    .map((t) => `<span class="chip tag">#${escapeHtml(t)}</span>`)
-    .join("");
   const sub = calcSubProgress(task);
-  const subHtml = sub
-    ? `<span class="chip"><span style="margin-right:4px">☑</span>${sub.done}/${sub.total}</span>`
-    : "";
-  const progressHtml = sub
-    ? `<div class="progress"><div style="width:${sub.pct}%"></div></div>`
-    : "";
+  const tags = (task.tags || []).filter(Boolean);
 
-  el.innerHTML = `
-    <div class="quick">
-      <button title="編集" data-action="edit">✎</button>
-      <button title="複製" data-action="duplicate">⎘</button>
-      <button title="削除" data-action="delete">🗑</button>
+  const prioMark =
+    task.priority === "high"
+      ? `<span class="row-prio high" title="優先度: 高">🔥</span>`
+      : task.priority === "low"
+      ? `<span class="row-prio low" title="優先度: 低">·</span>`
+      : "";
+
+  row.innerHTML = `
+    <button type="button" class="row-check" aria-label="完了切替">${task.status === "done" ? "✓" : ""}</button>
+    <div class="row-body">
+      <div class="row-title-line">
+        ${prioMark}
+        <span class="row-title">${escapeHtml(task.title || "(タイトルなし)")}</span>
+      </div>
+      ${task.details ? `<div class="row-details">${escapeHtml(task.details).split("\n")[0]}</div>` : ""}
+      <div class="row-meta">
+        ${dl ? `<span class="row-chip dl ${dl.cls}">⏰ ${escapeHtml(dl.label)}</span>` : ""}
+        ${sub ? `<span class="row-chip sub">☑ ${sub.done}/${sub.total}</span>` : ""}
+        ${tags.map((t) => `<span class="row-chip tag">#${escapeHtml(t)}</span>`).join("")}
+      </div>
+      ${sub ? `<div class="row-progress"><div style="width:${sub.pct}%"></div></div>` : ""}
     </div>
-    <h3 class="title">${escapeHtml(task.title || "(タイトルなし)")}</h3>
-    ${task.details ? `<p class="details">${escapeHtml(task.details)}</p>` : ""}
-    <div class="meta">
-      <span class="chip priority ${task.priority}">${priorityLabel(task.priority)}</span>
-      ${dl ? `<span class="chip deadline ${dl.cls}">⏰ ${escapeHtml(dl.label)}</span>` : ""}
-      ${subHtml}
-      ${tagsHtml}
-    </div>
-    ${progressHtml}
+    <button type="button" class="row-more" aria-label="編集">⋯</button>
   `;
 
-  el.addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-action]");
-    if (btn) {
-      const a = btn.dataset.action;
-      if (a === "edit") openEditor(task.id);
-      if (a === "delete") deleteTask(task.id);
-      if (a === "duplicate") duplicateTask(task.id);
-      e.stopPropagation();
-      return;
-    }
+  row.querySelector(".row-check").addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleTaskDone(task.id);
+  });
+  row.querySelector(".row-more").addEventListener("click", (e) => {
+    e.stopPropagation();
     openEditor(task.id);
   });
-
-  el.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") openEditor(task.id);
-    if (e.key === "Delete" || e.key === "Backspace") {
+  row.addEventListener("click", () => openEditor(task.id));
+  row.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
       e.preventDefault();
-      deleteTask(task.id);
+      openEditor(task.id);
     }
   });
 
-  el.addEventListener("dragstart", (e) => {
-    el.classList.add("dragging");
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", task.id);
-  });
-  el.addEventListener("dragend", () => el.classList.remove("dragging"));
-
-  return el;
+  return row;
 }
+
+function toggleTaskDone(id) {
+  const t = state.tasks.find((x) => x.id === id);
+  if (!t) return;
+  t.status = t.status === "done" ? "todo" : "done";
+  t.updatedAt = Date.now();
+  saveAll();
+  render();
+  renderToday();
+}
+
 
 // ---------- タスク CRUD ----------
 
@@ -577,47 +678,21 @@ $("#deleteBtn").addEventListener("click", () => {
   }
 });
 
-// ---------- ドラッグ&ドロップでステータス変更 ----------
-
-$$(".column").forEach((col) => {
-  col.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    col.classList.add("drag-over");
-    e.dataTransfer.dropEffect = "move";
-  });
-  col.addEventListener("dragleave", () => col.classList.remove("drag-over"));
-  col.addEventListener("drop", (e) => {
-    e.preventDefault();
-    col.classList.remove("drag-over");
-    const id = e.dataTransfer.getData("text/plain");
-    const newStatus = col.dataset.status;
-    const t = state.tasks.find((x) => x.id === id);
-    if (t && t.status !== newStatus) {
-      t.status = newStatus;
-      t.updatedAt = Date.now();
-      saveAll();
-      render();
-    }
-  });
-});
-
 // ---------- フィルタ・検索 ----------
 
 $("#searchInput").addEventListener("input", (e) => {
   state.filter.search = e.target.value;
   render();
 });
-$("#filterStatus").addEventListener("change", (e) => {
-  state.filter.status = e.target.value;
-  render();
-});
-$("#filterPriority").addEventListener("change", (e) => {
-  state.filter.priority = e.target.value;
-  render();
-});
-$("#sortBy").addEventListener("change", (e) => {
-  state.sort = e.target.value;
-  render();
+
+$$("#filterPills .pill").forEach((pill) => {
+  pill.addEventListener("click", () => {
+    state.filter.pf = pill.dataset.pf;
+    $$("#filterPills .pill").forEach((p) =>
+      p.classList.toggle("active", p === pill)
+    );
+    render();
+  });
 });
 
 // ---------- 習慣 描画 ----------

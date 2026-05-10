@@ -53,42 +53,20 @@
     </section>
 
     <section id="tasksView" class="view" hidden>
-      <section class="filters">
+      <div class="task-toolbar">
         <input id="searchInput" type="search" placeholder="🔍 タイトル・詳細・タグで検索…" />
-        <select id="filterStatus">
-          <option value="all">すべての状態</option>
-          <option value="todo">未着手</option>
-          <option value="doing">進行中</option>
-          <option value="done">完了</option>
-        </select>
-        <select id="filterPriority">
-          <option value="all">すべての優先度</option>
-          <option value="high">高</option>
-          <option value="mid">中</option>
-          <option value="low">低</option>
-        </select>
-        <select id="sortBy">
-          <option value="deadline">期限が近い順</option>
-          <option value="priority">優先度が高い順</option>
-          <option value="created">作成が新しい順</option>
-          <option value="updated">更新が新しい順</option>
-        </select>
-      </section>
-
-      <div class="board" id="board">
-        <div class="column" data-status="todo">
-          <h2>📝 未着手 <span class="count" id="count-todo">0</span></h2>
-          <div class="cards" id="col-todo"></div>
-        </div>
-        <div class="column" data-status="doing">
-          <h2>✨ 進行中 <span class="count" id="count-doing">0</span></h2>
-          <div class="cards" id="col-doing"></div>
-        </div>
-        <div class="column" data-status="done">
-          <h2>🌸 完了 <span class="count" id="count-done">0</span></h2>
-          <div class="cards" id="col-done"></div>
+        <div class="filter-pills" id="filterPills">
+          <button type="button" class="pill active" data-pf="all">すべて</button>
+          <button type="button" class="pill" data-pf="overdue">⚠️ 期限切れ</button>
+          <button type="button" class="pill" data-pf="today">🌅 今日</button>
+          <button type="button" class="pill" data-pf="doing">⚡ 進行中</button>
+          <button type="button" class="pill" data-pf="high">🔥 高優先度</button>
         </div>
       </div>
+      <div id="taskSections" class="task-sections"></div>
+      <p id="tasksEmpty" class="empty-state" hidden>
+        条件に合うタスクはありません ✨
+      </p>
     </section>
 
     <section id="habitsView" class="view" hidden>

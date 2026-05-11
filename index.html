@@ -220,6 +220,32 @@
   </div>
 
   <input type="file" id="importFileInput" accept="application/json" hidden />
+
+  <!-- 一部の習慣を別ユーザーへ -->
+  <dialog id="partialMoveDialog" class="modal">
+    <form method="dialog">
+      <header>
+        <h2>習慣を別ユーザーへ移動</h2>
+        <button type="button" class="icon-btn" id="closePartialMove" aria-label="閉じる">✕</button>
+      </header>
+      <p class="hint">
+        移動する習慣にチェックを入れてください。<br>
+        選んだ習慣だけが移動先ユーザーへ移り、こちら(現在のユーザー)からは消えます。<br>
+        ※ 実行前に念のため自動で JSON バックアップを保存します。
+      </p>
+      <label>
+        <span>移動先</span>
+        <select id="partialMoveTarget"></select>
+      </label>
+      <ul id="partialMoveList" class="partial-move-list"></ul>
+      <footer class="editor-footer">
+        <button type="button" id="cancelPartialMove">キャンセル</button>
+        <div class="grow"></div>
+        <button type="button" id="executePartialMove" class="primary">移動する</button>
+      </footer>
+    </form>
+  </dialog>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script type="module" src="./app.js"></script>

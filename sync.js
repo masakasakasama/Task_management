@@ -98,6 +98,23 @@ export function isSyncActive() {
   return active;
 }
 
+const RESET_KEY_PREFIX = "fuwatto_last_reset_";
+let resetKey = null;
+
+function maybeHardReset(data) {
+  // remote の resetAt が localStorage の最終 resetAt より新しければ、
+  // マージせずに remote の状態をローカルに強制反映する（削除を伝搬させるための機構）
+  const remoteResetAt = Number(data.resetAt || 0);
+  if (remoteResetAt <= 0) return null;
+  const lastSeen = Number(localStorage.getItem(resetKey) || 0);
+  if (remoteResetAt <= lastSeen) return null;
+  localStorage.setItem(resetKey, String(remoteResetAt));
+  return {
+    tasks: Array.isArray(data.tasks) ? data.tasks : [],
+    habits: Array.isArray(data.habits) ? data.habits : [],
+  };
+}
+
 export async function startSync({ spaceId, getState, onRemote, onStatus }) {
   stopSync();
   getStateRef = getState;
@@ -108,12 +125,50 @@ export async function startSync({ spaceId, getState, onRemote, onStatus }) {
   app = getApps().find((a) => a.name === "[DEFAULT]") || initializeApp(firebaseConfig);
   db = getFirestore(app);
   docRef = doc(db, COLLECTION, spaceId || BASE_SPACE_ID);
+  resetKey = RESET_KEY_PREFIX + (spaceId || BASE_SPACE_ID);
 
   onStatus("sync", "同期接続中…");
 
   const snap = await getDoc(docRef);
   if (snap.exists()) {
     const data = snap.data();
+
+    // resetAt が新しければ、マージせず remote をローカルへ強制反映
+    const hard = maybeHardReset(data);
+    if (hard) {
+      lastRemoteHash = hash(hard);
+      onRemote(hard);
+      // 購読開始
+      unsub = onSnapshot(
+        docRef,
+        (snap2) => {
+          if (!snap2.exists()) return;
+          const data2 = snap2.data();
+          const hard2 = maybeHardReset(data2);
+          if (hard2) {
+            const h = hash(hard2);
+            if (h === lastRemoteHash) return;
+            lastRemoteHash = h;
+            onRemoteRef(hard2);
+            return;
+          }
+          const remote2 = {
+            tasks: Array.isArray(data2.tasks) ? data2.tasks : [],
+            habits: Array.isArray(data2.habits) ? data2.habits : [],
+          };
+          const h = hash(remote2);
+          if (h === lastRemoteHash) return;
+          lastRemoteHash = h;
+          onRemoteRef(remote2);
+        },
+        (err) => onStatusRef("err", "同期エラー: " + (err.code || err.message))
+      );
+      active = true;
+      window.addEventListener("fuwatto:push", schedulePush);
+      onStatus("ok", "同期済み");
+      return;
+    }
+
     const remote = {
       tasks: Array.isArray(data.tasks) ? data.tasks : [],
       habits: Array.isArray(data.habits) ? data.habits : [],
@@ -136,6 +191,15 @@ export async function startSync({ spaceId, getState, onRemote, onStatus }) {
     (snap) => {
       if (!snap.exists()) return;
       const data = snap.data();
+      // resetAt が新しければ強制リプレース
+      const hard = maybeHardReset(data);
+      if (hard) {
+        const h = hash(hard);
+        if (h === lastRemoteHash) return;
+        lastRemoteHash = h;
+        onRemoteRef(hard);
+        return;
+      }
       const remote = {
         tasks: Array.isArray(data.tasks) ? data.tasks : [],
         habits: Array.isArray(data.habits) ? data.habits : [],

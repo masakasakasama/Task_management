@@ -6,7 +6,7 @@
 import { startSync, stopSync, isSyncActive, spaceIdFor, startUsersSync, pushUsers } from "./sync.js";
 import { startCinnamonBridge } from "./cinnamon-bridge.js";
 
-const APP_VERSION = "v23";
+const APP_VERSION = "v24";
 const STORAGE_KEY_BASE = "fuwatto_tasks_v1";
 const HISTORY_KEY_BASE = "fuwatto_history_v1";
 const HISTORY_LIMIT = 30;
@@ -309,6 +309,87 @@ async function moveDataToUser(targetUserId, clearSource) {
   // 移動先ユーザーへ切替（reconnectSyncで両端統合される）
   await switchUser(targetUserId);
   toast(clearSource ? "データを移動しました ♡" : "データをコピーしました ♡");
+}
+
+// ===== 一部の習慣だけを別ユーザーへ移動 =====
+
+function openPartialMoveDialog() {
+  const others = state.users.filter((u) => u.id !== state.currentUserId);
+  if (others.length === 0) {
+    alert("他のユーザーがいません");
+    return;
+  }
+  // 移動先ドロップダウン
+  const targetSelect = $("#partialMoveTarget");
+  targetSelect.innerHTML = "";
+  for (const u of others) {
+    const opt = document.createElement("option");
+    opt.value = u.id;
+    opt.textContent = `${u.emoji} ${u.name}`;
+    targetSelect.appendChild(opt);
+  }
+  // 習慣リスト
+  const list = $("#partialMoveList");
+  list.innerHTML = "";
+  if (state.habits.length === 0) {
+    const li = document.createElement("li");
+    li.className = "pm-empty";
+    li.textContent = "習慣がありません";
+    list.appendChild(li);
+  } else {
+    for (const h of state.habits) {
+      const li = document.createElement("li");
+      li.innerHTML = `
+        <input type="checkbox" data-id="${h.id}" />
+        <span class="pm-emoji">${escapeHtml(h.emoji || "⭐")}</span>
+        <span class="pm-name">${escapeHtml(h.name)}</span>
+      `;
+      li.addEventListener("click", (e) => {
+        if (e.target.tagName !== "INPUT") {
+          const cb = li.querySelector("input");
+          cb.checked = !cb.checked;
+        }
+      });
+      list.appendChild(li);
+    }
+  }
+  $("#partialMoveDialog").showModal();
+}
+
+async function executePartialMove() {
+  const targetUserId = $("#partialMoveTarget").value;
+  if (!targetUserId) return;
+  const selectedIds = Array.from(
+    $("#partialMoveList").querySelectorAll("input[type=checkbox]:checked")
+  ).map((cb) => cb.dataset.id);
+  if (selectedIds.length === 0) {
+    alert("移動する習慣を1つ以上選んでください");
+    return;
+  }
+  const target = state.users.find((u) => u.id === targetUserId);
+  if (!confirm(`${selectedIds.length}個の習慣を「${target.emoji} ${target.name}」へ移動します。\nこちらからは削除されます。よろしいですか?`)) return;
+
+  // 念のため自動バックアップ
+  downloadBackup();
+
+  // 移動対象とそれ以外に分割
+  const moving = state.habits.filter((h) => selectedIds.includes(h.id));
+  const remaining = state.habits.filter((h) => !selectedIds.includes(h.id));
+
+  // 移動先のlocalStorageに統合
+  const targetCurrent = loadAll(targetUserId);
+  const mergedTarget = mergeSnapshots(targetCurrent, { tasks: [], habits: moving });
+  localStorage.setItem(storageKeyFor(targetUserId), JSON.stringify(mergedTarget));
+
+  // 現在ユーザーから移動分を除外して保存（Firestoreにも反映）
+  state.habits = remaining;
+  saveAll();
+  await new Promise((r) => setTimeout(r, 1200));
+
+  $("#partialMoveDialog").close();
+  renderHabits();
+  renderToday();
+  toast(`${moving.length}個の習慣を移動しました ♡`);
 }
 
 async function promptMoveData() {

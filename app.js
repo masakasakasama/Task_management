@@ -6,7 +6,7 @@
 import { startSync, stopSync, isSyncActive, spaceIdFor, startUsersSync, pushUsers } from "./sync.js";
 import { startCinnamonBridge } from "./cinnamon-bridge.js";
 
-const APP_VERSION = "v22";
+const APP_VERSION = "v23";
 const STORAGE_KEY_BASE = "fuwatto_tasks_v1";
 const HISTORY_KEY_BASE = "fuwatto_history_v1";
 const HISTORY_LIMIT = 30;
@@ -238,6 +238,107 @@ async function handleImportFile(file) {
   } catch (err) {
     alert("読み込み失敗: " + err.message);
   }
+}
+
+function mergeSnapshots(targetData, sourceData) {
+  const taskMap = new Map((targetData.tasks || []).map((t) => [t.id, t]));
+  for (const t of sourceData.tasks || []) {
+    if (!t || !t.id) continue;
+    const ex = taskMap.get(t.id);
+    if (!ex || (t.updatedAt || 0) >= (ex.updatedAt || 0)) {
+      taskMap.set(t.id, t);
+    }
+  }
+  const habitMap = new Map((targetData.habits || []).map((h) => [h.id, h]));
+  for (const h of sourceData.habits || []) {
+    if (!h || !h.id) continue;
+    const ex = habitMap.get(h.id);
+    if (!ex) {
+      habitMap.set(h.id, h);
+      continue;
+    }
+    const merged = { ...ex };
+    merged.entries = { ...(ex.entries || {}) };
+    merged.entryUpdatedAt = { ...(ex.entryUpdatedAt || {}) };
+    const allDates = new Set([
+      ...Object.keys(ex.entries || {}),
+      ...Object.keys(h.entries || {}),
+    ]);
+    for (const d of allDates) {
+      const lt = (ex.entryUpdatedAt || {})[d] || 0;
+      const rt = (h.entryUpdatedAt || {})[d] || 0;
+      if (rt >= lt && h.entries && d in h.entries) {
+        merged.entries[d] = h.entries[d];
+        merged.entryUpdatedAt[d] = rt || Date.now();
+      }
+    }
+    if ((h.updatedAt || 0) > (ex.updatedAt || 0)) {
+      merged.name = h.name;
+      merged.emoji = h.emoji;
+    }
+    merged.updatedAt = Math.max(ex.updatedAt || 0, h.updatedAt || 0);
+    habitMap.set(h.id, merged);
+  }
+  return {
+    tasks: Array.from(taskMap.values()),
+    habits: Array.from(habitMap.values()),
+  };
+}
+
+async function moveDataToUser(targetUserId, clearSource) {
+  if (targetUserId === state.currentUserId) return;
+  // 必ず先にバックアップを取る
+  downloadBackup();
+
+  const sourceUserId = state.currentUserId;
+  const sourceSnapshot = { tasks: state.tasks, habits: state.habits };
+  const targetCurrent = loadAll(targetUserId);
+  const mergedTarget = mergeSnapshots(targetCurrent, sourceSnapshot);
+
+  // 移動先のlocalStorageへ書き込み
+  localStorage.setItem(storageKeyFor(targetUserId), JSON.stringify(mergedTarget));
+
+  if (clearSource) {
+    // 現在ユーザーの状態を空にしてFirestoreへ送信
+    state.tasks = [];
+    state.habits = [];
+    saveAll(false);
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+
+  // 移動先ユーザーへ切替（reconnectSyncで両端統合される）
+  await switchUser(targetUserId);
+  toast(clearSource ? "データを移動しました ♡" : "データをコピーしました ♡");
+}
+
+async function promptMoveData() {
+  const others = state.users.filter((u) => u.id !== state.currentUserId);
+  if (others.length === 0) {
+    alert("他のユーザーがいません");
+    return;
+  }
+  let target = others[0];
+  if (others.length > 1) {
+    const lines = others.map((u, i) => `${i + 1}: ${u.emoji} ${u.name}`).join("\n");
+    const choice = prompt(`移動先の番号を選んでください:\n\n${lines}`, "1");
+    if (!choice) return;
+    const idx = Number(choice) - 1;
+    if (!others[idx]) {
+      alert("無効です");
+      return;
+    }
+    target = others[idx];
+  }
+  const cur = currentUser();
+  const mode = prompt(
+    `「${cur.emoji} ${cur.name}」のデータを「${target.emoji} ${target.name}」へ:\n\n` +
+      `  1: コピー（こちらにも残す）\n` +
+      `  2: 移動（こちらは空に）\n\n` +
+      `1か2を入力（念のためJSONバックアップが自動で保存されます）`,
+    "2"
+  );
+  if (mode !== "1" && mode !== "2") return;
+  await moveDataToUser(target.id, mode === "2");
 }
 
 function restoreFromLocalHistory() {
@@ -1726,6 +1827,16 @@ function renderUserMenu() {
     restoreFromLocalHistory();
   });
   menu.appendChild(histBtn);
+  // データを別ユーザーへ
+  const moveBtn = document.createElement("button");
+  moveBtn.type = "button";
+  moveBtn.className = "user-menu-item rename";
+  moveBtn.innerHTML = "↔️ このデータを別ユーザーへ";
+  moveBtn.addEventListener("click", () => {
+    menu.hidden = true;
+    promptMoveData();
+  });
+  menu.appendChild(moveBtn);
 }
 
 function promptRenameUsers() {

@@ -6,8 +6,10 @@
 import { startSync, stopSync, isSyncActive, spaceIdFor, startUsersSync, pushUsers } from "./sync.js";
 import { startCinnamonBridge } from "./cinnamon-bridge.js";
 
-const APP_VERSION = "v21";
+const APP_VERSION = "v22";
 const STORAGE_KEY_BASE = "fuwatto_tasks_v1";
+const HISTORY_KEY_BASE = "fuwatto_history_v1";
+const HISTORY_LIMIT = 30;
 const VIEW_KEY = "fuwatto_view_v1";
 const USERS_KEY = "fuwatto_users_v1";
 const CURRENT_USER_KEY = "fuwatto_current_user_v1";
@@ -44,6 +46,36 @@ function setCurrentUserIdLS(id) {
 function storageKeyFor(userId) {
   // u1 は既存データを温存するためサフィックス無し
   return userId === "u1" ? STORAGE_KEY_BASE : `${STORAGE_KEY_BASE}__${userId}`;
+}
+
+function historyKeyFor(userId) {
+  return `${HISTORY_KEY_BASE}__${userId}`;
+}
+
+// localStorageに直近HISTORY_LIMIT世代のスナップショットを保持
+function pushLocalHistory(userId, snapshot) {
+  try {
+    const key = historyKeyFor(userId);
+    const list = JSON.parse(localStorage.getItem(key) || "[]");
+    // 直前と全く同じ内容なら追加しない（無駄を減らす）
+    const lastJson = list.length ? JSON.stringify(list[list.length - 1].data) : "";
+    const newJson = JSON.stringify(snapshot);
+    if (lastJson === newJson) return;
+    list.push({ at: Date.now(), data: snapshot });
+    while (list.length > HISTORY_LIMIT) list.shift();
+    localStorage.setItem(key, JSON.stringify(list));
+  } catch (e) {
+    // 履歴が壊れても本体データは無事
+    console.warn("[history] push failed:", e);
+  }
+}
+
+function loadLocalHistory(userId = state.currentUserId) {
+  try {
+    return JSON.parse(localStorage.getItem(historyKeyFor(userId)) || "[]");
+  } catch {
+    return [];
+  }
 }
 
 const state = {
@@ -103,15 +135,148 @@ function loadAll(userId = state.currentUserId) {
 }
 
 function saveAll(showStatus = true) {
-  localStorage.setItem(
-    storageKeyFor(state.currentUserId),
-    JSON.stringify({ tasks: state.tasks, habits: state.habits })
-  );
+  const snapshot = { tasks: state.tasks, habits: state.habits };
+  localStorage.setItem(storageKeyFor(state.currentUserId), JSON.stringify(snapshot));
+  pushLocalHistory(state.currentUserId, snapshot);
   if (showStatus) setSyncStatus("ok", isSyncActive() ? "保存・同期済み" : "この端末に保存済み");
   if (isSyncActive()) {
     setSyncStatus("sync", "同期中…");
     window.dispatchEvent(new CustomEvent("fuwatto:push"));
   }
+}
+
+// ============== バックアップ/復元 ==============
+
+function downloadBackup() {
+  const u = currentUser();
+  const payload = {
+    app: "fuwatto-task",
+    version: APP_VERSION,
+    user: { id: u.id, name: u.name, emoji: u.emoji },
+    exportedAt: new Date().toISOString(),
+    tasks: state.tasks,
+    habits: state.habits,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
+  a.href = url;
+  a.download = `task-backup-${u.name}-${ts}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast("バックアップを保存しました ♡");
+}
+
+function mergeFromBackup(data) {
+  const incomingTasks = Array.isArray(data.tasks) ? data.tasks : [];
+  const incomingHabits = Array.isArray(data.habits) ? data.habits : [];
+
+  // タスクは id+updatedAt で安全マージ
+  const taskMap = new Map(state.tasks.map((t) => [t.id, t]));
+  for (const t of incomingTasks) {
+    if (!t || !t.id) continue;
+    const ex = taskMap.get(t.id);
+    if (!ex || (t.updatedAt || 0) >= (ex.updatedAt || 0)) {
+      taskMap.set(t.id, normalizeTask(t));
+    }
+  }
+  state.tasks = Array.from(taskMap.values());
+
+  // 習慣はentriesを日付ごとにマージ
+  const habitMap = new Map(state.habits.map((h) => [h.id, h]));
+  for (const h of incomingHabits) {
+    if (!h || !h.id) continue;
+    const ex = habitMap.get(h.id);
+    if (!ex) {
+      habitMap.set(h.id, normalizeHabit(h));
+      continue;
+    }
+    const merged = { ...ex };
+    merged.entries = { ...(ex.entries || {}) };
+    merged.entryUpdatedAt = { ...(ex.entryUpdatedAt || {}) };
+    const allDates = new Set([
+      ...Object.keys(ex.entries || {}),
+      ...Object.keys(h.entries || {}),
+    ]);
+    for (const d of allDates) {
+      const localT = (ex.entryUpdatedAt || {})[d] || 0;
+      const incomT = (h.entryUpdatedAt || {})[d] || 0;
+      if (incomT >= localT && h.entries && d in h.entries) {
+        merged.entries[d] = h.entries[d];
+        merged.entryUpdatedAt[d] = incomT || Date.now();
+      }
+    }
+    merged.updatedAt = Math.max(ex.updatedAt || 0, h.updatedAt || 0);
+    if ((h.updatedAt || 0) > (ex.updatedAt || 0)) {
+      merged.name = h.name;
+      merged.emoji = h.emoji;
+    }
+    habitMap.set(h.id, normalizeHabit(merged));
+  }
+  state.habits = Array.from(habitMap.values());
+
+  saveAll();
+  render();
+  renderHabits();
+  renderToday();
+}
+
+async function handleImportFile(file) {
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    const tCount = Array.isArray(data.tasks) ? data.tasks.length : 0;
+    const hCount = Array.isArray(data.habits) ? data.habits.length : 0;
+    if (!confirm(`復元しますか?\n\n読み込み: タスク${tCount}件 / 習慣${hCount}件\n（現データと統合され、新しい方を優先します）`)) {
+      return;
+    }
+    mergeFromBackup(data);
+    toast(`復元しました（${tCount}件 / ${hCount}件）`);
+  } catch (err) {
+    alert("読み込み失敗: " + err.message);
+  }
+}
+
+function restoreFromLocalHistory() {
+  const list = loadLocalHistory();
+  if (list.length === 0) {
+    alert("ローカル履歴がまだありません。");
+    return;
+  }
+  const lines = list
+    .slice()
+    .reverse()
+    .map((h, i) => {
+      const d = new Date(h.at);
+      const tCnt = (h.data.tasks || []).length;
+      const hCnt = (h.data.habits || []).length;
+      return `${i + 1}: ${d.toLocaleString("ja-JP")} (タスク${tCnt}件 / 習慣${hCnt}件)`;
+    })
+    .join("\n");
+  const choice = prompt(
+    `復元する世代の番号を入力してください（1が最新）:\n\n${lines}`,
+    "1"
+  );
+  if (!choice) return;
+  const idx = Number(choice) - 1;
+  if (isNaN(idx) || idx < 0 || idx >= list.length) {
+    alert("番号が無効です");
+    return;
+  }
+  const picked = list[list.length - 1 - idx];
+  if (!confirm(`${new Date(picked.at).toLocaleString("ja-JP")} 時点のデータで上書きします。よろしいですか?`)) return;
+  // 念のため現状をエクスポート
+  downloadBackup();
+  state.tasks = (picked.data.tasks || []).map(normalizeTask);
+  state.habits = (picked.data.habits || []).map(normalizeHabit);
+  saveAll();
+  render();
+  renderHabits();
+  renderToday();
+  toast("ローカル履歴から復元しました ♡");
 }
 
 // ---------- ユーティリティ ----------
@@ -1516,9 +1681,9 @@ function renderUserMenu() {
     });
     menu.appendChild(btn);
   }
+  // 区切り
+  menu.appendChild(document.createElement("hr"));
   // 名前編集
-  const sep = document.createElement("hr");
-  menu.appendChild(sep);
   const renameBtn = document.createElement("button");
   renameBtn.type = "button";
   renameBtn.className = "user-menu-item rename";
@@ -1528,6 +1693,39 @@ function renderUserMenu() {
     promptRenameUsers();
   });
   menu.appendChild(renameBtn);
+  // 区切り
+  menu.appendChild(document.createElement("hr"));
+  // バックアップ
+  const exportBtn = document.createElement("button");
+  exportBtn.type = "button";
+  exportBtn.className = "user-menu-item rename";
+  exportBtn.innerHTML = "💾 バックアップを保存 (JSON)";
+  exportBtn.addEventListener("click", () => {
+    menu.hidden = true;
+    downloadBackup();
+  });
+  menu.appendChild(exportBtn);
+  // 復元（ファイル）
+  const importBtn = document.createElement("button");
+  importBtn.type = "button";
+  importBtn.className = "user-menu-item rename";
+  importBtn.innerHTML = "📂 ファイルから復元";
+  importBtn.addEventListener("click", () => {
+    menu.hidden = true;
+    $("#importFileInput").click();
+  });
+  menu.appendChild(importBtn);
+  // 復元（ローカル履歴）
+  const histBtn = document.createElement("button");
+  histBtn.type = "button";
+  histBtn.className = "user-menu-item rename";
+  const histCount = loadLocalHistory().length;
+  histBtn.innerHTML = `⏪ ローカル履歴から復元 (${histCount}件)`;
+  histBtn.addEventListener("click", () => {
+    menu.hidden = true;
+    restoreFromLocalHistory();
+  });
+  menu.appendChild(histBtn);
 }
 
 function promptRenameUsers() {
@@ -1588,6 +1786,19 @@ function init() {
   // バージョンタグ
   const vt = $("#versionTag");
   if (vt) vt.textContent = APP_VERSION;
+
+  // ファイル復元の入力ハンドラ
+  const fi = $("#importFileInput");
+  if (fi) {
+    fi.addEventListener("change", async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) await handleImportFile(file);
+      e.target.value = "";
+    });
+  }
+
+  // 起動時にもローカル履歴に現在状態を入れて、最低1世代は手元に残す
+  pushLocalHistory(state.currentUserId, { tasks: state.tasks, habits: state.habits });
 
   // 画面は縦固定（manifestで portrait 指定）
   try {

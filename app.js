@@ -5,8 +5,9 @@
 
 import { startSync, stopSync, isSyncActive, spaceIdFor, startUsersSync, pushUsers } from "./sync.js";
 import { startCinnamonBridge } from "./cinnamon-bridge.js";
+import { startRepsBridge } from "./reps-bridge.js";
 
-const APP_VERSION = "v24";
+const APP_VERSION = "v25";
 const STORAGE_KEY_BASE = "fuwatto_tasks_v1";
 const HISTORY_KEY_BASE = "fuwatto_history_v1";
 const HISTORY_LIMIT = 30;
@@ -1823,15 +1824,18 @@ async function switchUser(newUserId) {
   render();
   renderHabits();
   renderToday();
-  // シナモン連携バッジ: u1以外なら非表示
+  // 連携バッジ: u1ならシナモン、u2ならREPS、それ以外は非表示
   const badge = $("#cinnamonStatus");
   if (badge) {
-    if (newUserId !== "u1") {
-      badge.dataset.kind = "none";
-      badge.textContent = "";
-    } else {
+    if (newUserId === "u1") {
       badge.dataset.kind = "sync";
       badge.textContent = "🥗 シナモン同期中…";
+    } else if (newUserId === "u2") {
+      badge.dataset.kind = "sync";
+      badge.textContent = "💪 REPS同期中…";
+    } else {
+      badge.dataset.kind = "none";
+      badge.textContent = "";
     }
   }
   // 新Firestoreドキュメントへ再接続
@@ -2071,6 +2075,54 @@ function init() {
       }
       badge.dataset.kind = status.kind;
       badge.textContent = "🥗 " + status.text;
+    }
+  );
+
+  // REPS (俺筋トレ) 連携: 過去〜今日のワークアウトを達也(u2)へ反映
+  startRepsBridge(
+    (nameKeywords, progressByDate) => {
+      if (state.currentUserId !== "u2") return; // 達也のみ
+      const target = state.habits.find((h) =>
+        nameKeywords.some((k) => (h.name || "").toLowerCase().includes(k.toLowerCase()))
+      );
+      const badge = $("#cinnamonStatus");
+      if (!target) {
+        if (badge) {
+          badge.dataset.kind = "err";
+          badge.textContent = "💪 REPS: 「ワークアウト」習慣が見つからない";
+        }
+        return;
+      }
+      target.entries = target.entries || {};
+      target.entryUpdatedAt = target.entryUpdatedAt || {};
+      let changed = false;
+      let newlyComplete = false;
+      const tk = todayKey();
+      for (const [dateKey, pct] of Object.entries(progressByDate)) {
+        const current = target.entries[dateKey] || 0;
+        if (pct <= current) continue;
+        if (dateKey === tk && pct === 100 && current < 100) newlyComplete = true;
+        target.entries[dateKey] = pct;
+        target.entryUpdatedAt[dateKey] = Date.now();
+        changed = true;
+      }
+      if (changed) {
+        target.updatedAt = Date.now();
+        saveAll(false);
+        renderHabits();
+        renderToday();
+        if (newlyComplete) toast(`💪 ${target.name} 達成！🎉`);
+      }
+    },
+    (status) => {
+      const badge = $("#cinnamonStatus");
+      if (!badge) return;
+      if (state.currentUserId !== "u2") {
+        // 達也以外のときはREPSステータスを表示しない
+        return;
+      }
+      badge.dataset.kind = status.kind;
+      badge.textContent = "💪 " + status.text;
     }
   );
 

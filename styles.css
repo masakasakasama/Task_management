@@ -1223,34 +1223,3 @@ main { padding-bottom: 96px !important; }
   .habits-grid-wrap { max-height: 60vh; }
 }
 
-/* 習慣の一部移動ダイアログ */
-.partial-move-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 50vh;
-  overflow-y: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--card);
-}
-.partial-move-list li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--line);
-  cursor: pointer;
-  user-select: none;
-}
-.partial-move-list li:last-child { border-bottom: none; }
-.partial-move-list li:hover { background: var(--bg-2); }
-.partial-move-list input[type="checkbox"] {
-  width: 18px; height: 18px;
-  margin: 0;
-  flex-shrink: 0;
-  cursor: pointer;
-}
-.partial-move-list .pm-emoji { font-size: 18px; flex-shrink: 0; }
-.partial-move-list .pm-name { font-weight: 600; }
-.partial-move-list .pm-empty { color: var(--ink-soft); text-align: center; padding: 16px; cursor: default; }

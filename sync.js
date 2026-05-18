@@ -352,11 +352,23 @@ function mergeHabits(localList, remoteList) {
   return Array.from(map.values());
 }
 
+function stableTomb(tomb) {
+  // キー順を固定して端末間でhashがブレないようにする（同期ピンポン防止）
+  const out = {};
+  const t = (tomb && tomb.tasks) || {};
+  const h = (tomb && tomb.habits) || {};
+  out.tasks = {};
+  for (const k of Object.keys(t).sort()) out.tasks[k] = t[k];
+  out.habits = {};
+  for (const k of Object.keys(h).sort()) out.habits[k] = h[k];
+  return out;
+}
+
 function hash(obj) {
   try {
     const t = (obj.tasks || []).slice().sort((a, b) => (a.id > b.id ? 1 : -1));
     const h = (obj.habits || []).slice().sort((a, b) => (a.id > b.id ? 1 : -1));
-    const tb = obj.tombstones || {};
+    const tb = stableTomb(obj.tombstones);
     const s = JSON.stringify({ t, h, tb });
     let x = 0;
     for (let i = 0; i < s.length; i++) x = (x * 31 + s.charCodeAt(i)) | 0;

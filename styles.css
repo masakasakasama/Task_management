@@ -67,7 +67,7 @@ button, input, select, textarea {
 button {
   cursor: pointer;
   border: none;
-  background: #fff;
+  background: var(--card);
   padding: 8px 14px;
   border-radius: 999px;
   box-shadow: var(--shadow);
@@ -96,7 +96,7 @@ input[type="text"], input[type="search"], input[type="datetime-local"], textarea
   width: 100%;
   padding: 10px 14px;
   border: 1.5px solid var(--line);
-  background: #fff;
+  background: var(--card);
   border-radius: var(--radius-sm);
   outline: none;
   transition: border-color .15s ease, box-shadow .15s ease;
@@ -159,7 +159,7 @@ textarea { resize: vertical; min-height: 84px; }
   gap: 10px;
   padding: 14px 22px 0;
 }
-.filters > * { background: #fff; }
+.filters > * { background: var(--card); }
 
 main { padding: 14px 22px 80px; }
 
@@ -266,7 +266,7 @@ main { padding: 14px 22px 80px; }
 .card .quick button {
   width: 28px; height: 28px; padding: 0;
   border-radius: 8px;
-  background: rgba(255,255,255,.9);
+  background: var(--card);
   font-size: 14px;
   box-shadow: var(--shadow);
 }
@@ -277,7 +277,7 @@ main { padding: 14px 22px 80px; }
   border-radius: var(--radius);
   padding: 0;
   width: min(560px, 92vw);
-  background: #fff;
+  background: var(--card);
   box-shadow: 0 30px 80px rgba(168, 137, 255, 0.25);
 }
 .modal::backdrop {
@@ -305,7 +305,7 @@ main { padding: 14px 22px 80px; }
   margin: 0;
   font-size: 12px;
   color: var(--ink-soft);
-  background: #fff8fb;
+  background: var(--bg-1);
   padding: 10px 12px;
   border-radius: var(--radius-sm);
   border: 1px dashed var(--line);
@@ -329,7 +329,7 @@ main { padding: 14px 22px 80px; }
   left: 50%;
   bottom: 24px;
   transform: translateX(-50%) translateY(40px);
-  background: #fff;
+  background: var(--card);
   border-radius: 999px;
   padding: 10px 18px;
   box-shadow: var(--shadow);
@@ -386,7 +386,7 @@ main { padding-bottom: 96px !important; }
   width: min(380px, 92vw);
   padding: 0;
   border-radius: var(--radius);
-  background: white;
+  background: var(--card);
 }
 .pct-picker-inner { padding: 18px 20px 20px; }
 .pct-picker-title {
@@ -408,7 +408,7 @@ main { padding-bottom: 96px !important; }
   gap: 6px;
   padding: 10px 4px;
   border-radius: 14px;
-  background: #faf6fc;
+  background: var(--bg-2);
   border: 1.5px solid transparent;
   font-weight: 700;
   font-size: 13px;
@@ -416,12 +416,12 @@ main { padding-bottom: 96px !important; }
   box-shadow: none;
   transition: transform .12s ease, background .15s ease;
 }
-.pct-opt:hover { transform: translateY(-2px); background: #fff5fa; }
+.pct-opt:hover { transform: translateY(-2px); background: var(--bg-1); }
 .pct-opt:active { transform: translateY(0); }
 .pct-opt .dot {
   width: 28px; height: 28px; border-radius: 50%;
-  border: 1.5px solid #ece4f3;
-  background: #fafafa;
+  border: 1.5px solid var(--line);
+  background: var(--bg-2);
 }
 .pct-opt .dot[data-pct="20"] { background: #ffe0ec; border-color: transparent; }
 .pct-opt .dot[data-pct="40"] { background: #ffb8d4; border-color: transparent; }
@@ -560,7 +560,7 @@ main { padding-bottom: 96px !important; }
   font-weight: 600;
   text-align: right;
   padding: 0 8px 0 4px;
-  background: rgba(255,255,255,0.92);
+  background: var(--card);
   position: sticky;
   left: 0;
   z-index: 1;
@@ -571,7 +571,7 @@ main { padding-bottom: 96px !important; }
 .habits-grid .day-wd { font-size: 10px; color: var(--ink-soft); }
 
 .habits-grid tr.today .day-col {
-  background: linear-gradient(90deg, #fff0f6, rgba(255,255,255,0.95));
+  background: linear-gradient(90deg, var(--pink-soft), var(--card));
   font-weight: 700;
 }
 .habits-grid tr.today .day-num { color: var(--pink); }
@@ -621,7 +621,7 @@ main { padding-bottom: 96px !important; }
   text-align: center;
   color: var(--ink-soft);
   padding: 40px 20px;
-  background: rgba(255,255,255,0.6);
+  background: var(--col-bg);
   border-radius: var(--radius);
   border: 1px dashed var(--line);
 }

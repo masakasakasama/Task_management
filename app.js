@@ -7,7 +7,7 @@ import { startSync, stopSync, isSyncActive, spaceIdFor, startUsersSync, pushUser
 import { startCinnamonBridge } from "./cinnamon-bridge.js";
 import { startRepsBridge } from "./reps-bridge.js";
 
-const APP_VERSION = "v27";
+const APP_VERSION = "v28";
 const STORAGE_KEY_BASE = "fuwatto_tasks_v1";
 const HISTORY_KEY_BASE = "fuwatto_history_v1";
 const HISTORY_LIMIT = 30;

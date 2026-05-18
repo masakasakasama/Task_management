@@ -7,7 +7,7 @@ import { startSync, stopSync, isSyncActive, spaceIdFor, startUsersSync, pushUser
 import { startCinnamonBridge } from "./cinnamon-bridge.js";
 import { startRepsBridge } from "./reps-bridge.js";
 
-const APP_VERSION = "v26";
+const APP_VERSION = "v27";
 const STORAGE_KEY_BASE = "fuwatto_tasks_v1";
 const HISTORY_KEY_BASE = "fuwatto_history_v1";
 const HISTORY_LIMIT = 30;
@@ -82,6 +82,7 @@ const state = {
   view: "tasks",
   habitYear: new Date().getFullYear(),
   habitMonth: new Date().getMonth(),
+  tombstones: { tasks: {}, habits: {} },
 };
 
 function currentUser() {
@@ -112,25 +113,42 @@ function currentUser() {
 
 // ---------- ストレージ ----------
 
+function emptyTombstones() {
+  return { tasks: {}, habits: {} };
+}
+
 function loadAll(userId = state.currentUserId) {
   try {
     const raw = localStorage.getItem(storageKeyFor(userId));
-    if (!raw) return { tasks: [], habits: [] };
+    if (!raw) return { tasks: [], habits: [], tombstones: emptyTombstones() };
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return { tasks: parsed, habits: [] };
+    if (Array.isArray(parsed)) return { tasks: parsed, habits: [], tombstones: emptyTombstones() };
+    const tb = parsed.tombstones && typeof parsed.tombstones === "object" ? parsed.tombstones : {};
     return {
       tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
       habits: Array.isArray(parsed.habits) ? parsed.habits : [],
+      tombstones: {
+        tasks: tb.tasks && typeof tb.tasks === "object" ? tb.tasks : {},
+        habits: tb.habits && typeof tb.habits === "object" ? tb.habits : {},
+      },
     };
   } catch {
-    return { tasks: [], habits: [] };
+    return { tasks: [], habits: [], tombstones: emptyTombstones() };
   }
 }
 
 function saveAll(showStatus = true) {
-  const snapshot = { tasks: state.tasks, habits: state.habits };
-  localStorage.setItem(storageKeyFor(state.currentUserId), JSON.stringify(snapshot));
-  pushLocalHistory(state.currentUserId, snapshot);
+  const snapshot = {
+    tasks: state.tasks,
+    habits: state.habits,
+    tombstones: state.tombstones || emptyTombstones(),
+  };
+  try {
+    localStorage.setItem(storageKeyFor(state.currentUserId), JSON.stringify(snapshot));
+    pushLocalHistory(state.currentUserId, { tasks: state.tasks, habits: state.habits });
+  } catch (e) {
+    console.warn("[saveAll] localStorage failed:", e);
+  }
   if (showStatus) setSyncStatus("ok", isSyncActive() ? "保存・同期済み" : "この端末に保存済み");
   if (isSyncActive()) {
     setSyncStatus("sync", "同期中…");
@@ -204,6 +222,9 @@ function normalizeTask(t) {
     priority: ["low", "mid", "high"].includes(t.priority) ? t.priority : "mid",
     status: ["todo", "doing", "done"].includes(t.status) ? t.status : "todo",
     tags: Array.isArray(t.tags) ? t.tags.filter(Boolean) : [],
+    recurrence: ["none", "daily", "weekdays", "weekly", "monthly"].includes(t.recurrence)
+      ? t.recurrence
+      : "none",
     subtasks: Array.isArray(t.subtasks)
       ? t.subtasks
           .filter((s) => s && typeof s.text === "string")
@@ -242,6 +263,98 @@ function calculateStreak(habit) {
     i++;
   }
   return streak;
+}
+
+function calculateBestStreak(habit) {
+  const dates = Object.keys(habit.entries || {})
+    .filter((k) => (habit.entries[k] || 0) > 0)
+    .sort();
+  let best = 0, cur = 0, prev = null;
+  for (const k of dates) {
+    const d = new Date(k + "T00:00:00");
+    if (prev) {
+      const diff = Math.round((d - prev) / 86400000);
+      cur = diff === 1 ? cur + 1 : 1;
+    } else cur = 1;
+    if (cur > best) best = cur;
+    prev = d;
+  }
+  return best;
+}
+
+function monthCompletionRate(habit, year, month) {
+  const now = new Date();
+  const isCurrent = year === now.getFullYear() && month === now.getMonth();
+  const lastDay = isCurrent ? now.getDate() : new Date(year, month + 1, 0).getDate();
+  let done = 0;
+  for (let d = 1; d <= lastDay; d++) {
+    const key = dateKey(new Date(year, month, d));
+    if ((habit.entries || {})[key] > 0) done++;
+  }
+  return { done, total: lastDay, pct: lastDay ? Math.round((done / lastDay) * 100) : 0 };
+}
+
+function renderStats() {
+  const sv = $("#statsView");
+  if (!sv || sv.hidden) return;
+
+  const now = new Date();
+  const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
+  const dow = startOfToday.getDay();
+  const startOfWeek = new Date(startOfToday); startOfWeek.setDate(startOfWeek.getDate() - dow);
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  let doneWeek = 0, doneMonth = 0, overdue = 0, doing = 0, open = 0;
+  for (const t of state.tasks) {
+    if (t.status === "done") {
+      const u = new Date(t.updatedAt || 0);
+      if (u >= startOfWeek) doneWeek++;
+      if (u >= startOfMonth) doneMonth++;
+    } else {
+      if (t.status === "doing") doing++; else open++;
+      if (t.deadline && new Date(t.deadline) < startOfToday) overdue++;
+    }
+  }
+
+  const card = (label, val, cls = "") =>
+    `<div class="stat-card ${cls}"><div class="sv">${val}</div><div class="sl">${label}</div></div>`;
+  $("#statsTasks").innerHTML =
+    card("今週 完了", doneWeek) +
+    card("今月 完了", doneMonth) +
+    card("未完", open + doing) +
+    card("期限切れ", overdue, overdue > 0 ? "danger" : "");
+
+  const wrap = $("#statsHabits");
+  wrap.innerHTML = "";
+  $("#statsHabitsEmpty").hidden = state.habits.length > 0;
+  for (const h of state.habits) {
+    const r = monthCompletionRate(h, now.getFullYear(), now.getMonth());
+    const cur = calculateStreak(h);
+    const best = calculateBestStreak(h);
+    const row = document.createElement("div");
+    row.className = "stat-habit";
+    row.innerHTML = `
+      <div class="sh-head">
+        <span>${escapeHtml(h.emoji || "⭐")} ${escapeHtml(h.name)}</span>
+        <span class="sh-pct">${r.pct}%</span>
+      </div>
+      <div class="sh-bar"><div style="width:${r.pct}%"></div></div>
+      <div class="sh-meta">${r.done}/${r.total}日 ・ 🔥連続 ${cur} ・ 最長 ${best}</div>
+    `;
+    wrap.appendChild(row);
+  }
+
+  const totalHabits = state.habits.length;
+  const avgPct = totalHabits
+    ? Math.round(
+        state.habits.reduce(
+          (a, h) => a + monthCompletionRate(h, now.getFullYear(), now.getMonth()).pct,
+          0
+        ) / totalHabits
+      )
+    : 0;
+  $("#statsSummary").textContent =
+    `今月の習慣平均達成率 ${avgPct}% ・ 今週タスク完了 ${doneWeek}件`;
 }
 
 function normalizeHabit(h) {
@@ -483,6 +596,7 @@ function renderTaskRow(task) {
       ${task.details ? `<div class="row-details">${escapeHtml(task.details).split("\n")[0]}</div>` : ""}
       <div class="row-meta">
         ${dl ? `<span class="row-chip dl ${dl.cls}">⏰ ${escapeHtml(dl.label)}</span>` : ""}
+        ${task.recurrence && task.recurrence !== "none" ? `<span class="row-chip rec">🔁 ${({daily:"毎日",weekdays:"平日",weekly:"毎週",monthly:"毎月"})[task.recurrence] || "繰返"}</span>` : ""}
         ${sub ? `<span class="row-chip sub">☑ ${sub.done}/${sub.total}</span>` : ""}
         ${tags.map((t) => `<span class="row-chip tag">#${escapeHtml(t)}</span>`).join("")}
       </div>
@@ -510,11 +624,46 @@ function renderTaskRow(task) {
   return row;
 }
 
+function nextRecurrenceISO(baseISO, rec) {
+  const d = baseISO ? new Date(baseISO) : new Date();
+  if (isNaN(d.getTime())) return "";
+  if (rec === "daily") d.setDate(d.getDate() + 1);
+  else if (rec === "weekly") d.setDate(d.getDate() + 7);
+  else if (rec === "monthly") d.setMonth(d.getMonth() + 1);
+  else if (rec === "weekdays") {
+    do { d.setDate(d.getDate() + 1); } while (d.getDay() === 0 || d.getDay() === 6);
+  } else return "";
+  return d.toISOString();
+}
+
+// 完了した繰り返しタスクから次回分を生成
+function spawnRecurrenceIfNeeded(task) {
+  if (!task || task.recurrence === "none" || !task.recurrence) return;
+  const next = nextRecurrenceISO(task.deadline, task.recurrence);
+  if (!next) return;
+  const now = Date.now();
+  state.tasks.push({
+    id: uid(),
+    title: task.title,
+    details: task.details,
+    deadline: next,
+    priority: task.priority,
+    status: "todo",
+    tags: [...(task.tags || [])],
+    recurrence: task.recurrence,
+    subtasks: (task.subtasks || []).map((s) => ({ id: uid(), text: s.text, done: false })),
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
 function toggleTaskDone(id) {
   const t = state.tasks.find((x) => x.id === id);
   if (!t) return;
-  t.status = t.status === "done" ? "todo" : "done";
+  const wasDone = t.status === "done";
+  t.status = wasDone ? "todo" : "done";
   t.updatedAt = Date.now();
+  if (!wasDone && t.status === "done") spawnRecurrenceIfNeeded(t);
   saveAll();
   render();
   renderToday();
@@ -556,8 +705,11 @@ function deleteTask(id) {
   if (!t) return;
   if (!confirm(`「${t.title || "(タイトルなし)"}」を削除しますか？`)) return;
   state.tasks = state.tasks.filter((x) => x.id !== id);
+  state.tombstones = state.tombstones || emptyTombstones();
+  state.tombstones.tasks[id] = Date.now(); // 削除を全端末へ確実に伝播
   saveAll();
   render();
+  renderToday();
   toast("削除しました");
 }
 
@@ -595,6 +747,7 @@ function openEditor(id) {
   $("#f-deadline").value = task.deadline ? toLocalInput(task.deadline) : "";
   $("#f-priority").value = task.priority;
   $("#f-status").value = task.status;
+  $("#f-recurrence").value = task.recurrence || "none";
   $("#f-tags").value = (task.tags || []).join(", ");
   renderSubtasksInEditor(task);
   editor.showModal();
@@ -697,15 +850,23 @@ editorForm.addEventListener("submit", (e) => {
   e.preventDefault();
   if (!state.editingId) return;
   const tags = $("#f-tags").value.split(",").map((s) => s.trim()).filter(Boolean);
+  const prev = state.tasks.find((x) => x.id === state.editingId);
+  const wasDone = prev && prev.status === "done";
   const patch = {
     title: $("#f-title").value.trim(),
     details: $("#f-details").value,
     deadline: $("#f-deadline").value ? new Date($("#f-deadline").value).toISOString() : "",
     priority: $("#f-priority").value,
     status: $("#f-status").value,
+    recurrence: $("#f-recurrence").value,
     tags,
   };
   updateTask(state.editingId, patch);
+  // 完了に切り替わった繰り返しタスクは次回分を生成
+  if (!wasDone && patch.status === "done") {
+    const t = state.tasks.find((x) => x.id === state.editingId);
+    if (t) { spawnRecurrenceIfNeeded(t); saveAll(); render(); renderToday(); }
+  }
   toast("保存しました ♡");
   closeEditor();
 });
@@ -723,6 +884,7 @@ function scheduleAutoSave() {
       deadline: $("#f-deadline").value ? new Date($("#f-deadline").value).toISOString() : "",
       priority: $("#f-priority").value,
       status: $("#f-status").value,
+      recurrence: $("#f-recurrence").value,
       tags,
     };
     const t = state.tasks.find((x) => x.id === state.editingId);
@@ -1393,9 +1555,13 @@ $("#deleteHabitBtn").addEventListener("click", () => {
   const h = state.habits.find((x) => x.id === state.editingHabitId);
   if (!h) return;
   if (!confirm(`「${h.name}」を削除しますか？\n（過去の記録もすべて消えます）`)) return;
-  state.habits = state.habits.filter((x) => x.id !== state.editingHabitId);
+  const delId = state.editingHabitId;
+  state.habits = state.habits.filter((x) => x.id !== delId);
+  state.tombstones = state.tombstones || emptyTombstones();
+  state.tombstones.habits[delId] = Date.now(); // 削除を全端末へ確実に伝播
   saveAll();
   renderHabits();
+  renderToday();
   closeHabitEditor();
   toast("削除しました");
 });
@@ -1403,18 +1569,21 @@ $("#deleteHabitBtn").addEventListener("click", () => {
 // ---------- タブ切替 ----------
 
 function setView(view) {
-  if (!["today", "tasks", "habits"].includes(view)) view = "today";
+  if (!["today", "tasks", "habits", "stats"].includes(view)) view = "today";
   state.view = view;
   $("#todayView").hidden = view !== "today";
   $("#tasksView").hidden = view !== "tasks";
   $("#habitsView").hidden = view !== "habits";
+  $("#statsView").hidden = view !== "stats";
   $$("#tabs .tab").forEach((t) =>
     t.classList.toggle("active", t.dataset.view === view)
   );
+  $("#addBtn").style.display = view === "stats" ? "none" : "";
   $("#addBtn").textContent = view === "habits" ? "＋ 新しい習慣" : "＋ 新しいタスク";
   localStorage.setItem(VIEW_KEY, view);
   if (view === "today") renderToday();
   if (view === "habits") renderHabits();
+  if (view === "stats") renderStats();
 }
 
 $$("#tabs .tab").forEach((tab) => {
@@ -1465,17 +1634,36 @@ async function reconnectSync() {
     setSyncStatus("sync", "同期接続中…");
     await startSync({
       spaceId: spaceIdFor(state.currentUserId),
-      getState: () => ({ tasks: state.tasks, habits: state.habits }),
-      onRemote: ({ tasks, habits }) => {
+      getState: () => ({
+        tasks: state.tasks,
+        habits: state.habits,
+        tombstones: state.tombstones || emptyTombstones(),
+      }),
+      onRemote: ({ tasks, habits, tombstones }) => {
         state.tasks = (tasks || []).map(normalizeTask);
         state.habits = (habits || []).map(normalizeHabit);
-        localStorage.setItem(
-          storageKeyFor(state.currentUserId),
-          JSON.stringify({ tasks: state.tasks, habits: state.habits })
-        );
+        if (tombstones && typeof tombstones === "object") {
+          state.tombstones = {
+            tasks: tombstones.tasks || {},
+            habits: tombstones.habits || {},
+          };
+        }
+        try {
+          localStorage.setItem(
+            storageKeyFor(state.currentUserId),
+            JSON.stringify({
+              tasks: state.tasks,
+              habits: state.habits,
+              tombstones: state.tombstones,
+            })
+          );
+        } catch (e) {
+          console.warn("[onRemote] localStorage failed:", e);
+        }
         render();
         renderHabits();
         renderToday();
+        renderStats();
         setSyncStatus("ok", "同期済み");
       },
       onStatus: (kind, msg) => setSyncStatus(kind, msg),
@@ -1494,6 +1682,7 @@ async function switchUser(newUserId) {
   const saved = loadAll(newUserId);
   state.tasks = saved.tasks.map(normalizeTask);
   state.habits = saved.habits.map(normalizeHabit);
+  state.tombstones = saved.tombstones || emptyTombstones();
   // UI即時反映 + メニューの ✓ 位置を更新
   updateUserUI();
   renderUserMenu();
@@ -1607,11 +1796,13 @@ function init() {
   const saved = loadAll();
   state.tasks = saved.tasks.map(normalizeTask);
   state.habits = saved.habits.map(normalizeHabit);
+  state.tombstones = saved.tombstones || emptyTombstones();
   const savedView = localStorage.getItem(VIEW_KEY) || "today";
   setView(savedView);
   render();
   renderHabits();
   renderToday();
+  renderStats();
   // バージョンタグ
   const vt = $("#versionTag");
   if (vt) vt.textContent = APP_VERSION;

@@ -105,6 +105,22 @@
       </p>
       <p class="bridge-status-mini" id="cinnamonStatus" data-kind="none">🥗 待機中…</p>
     </section>
+
+    <section id="statsView" class="view" hidden>
+      <header class="today-header">
+        <h2>📊 振り返り</h2>
+        <p id="statsSummary" class="today-summary"></p>
+      </header>
+      <section class="today-block">
+        <div class="block-head"><h3>📝 タスク</h3></div>
+        <div id="statsTasks" class="stats-cards"></div>
+      </section>
+      <section class="today-block">
+        <div class="block-head"><h3>⭐ 習慣（今月）</h3></div>
+        <div id="statsHabits" class="stats-habits"></div>
+        <p id="statsHabitsEmpty" class="empty-mini" hidden>習慣がまだありません</p>
+      </section>
+    </section>
   </main>
   <p class="version-tag" id="versionTag"></p>
 
@@ -146,6 +162,16 @@
         </label>
       </div>
       <label>
+        <span>繰り返し</span>
+        <select id="f-recurrence">
+          <option value="none">なし</option>
+          <option value="daily">毎日</option>
+          <option value="weekdays">平日（月〜金）</option>
+          <option value="weekly">毎週（同じ曜日）</option>
+          <option value="monthly">毎月（同じ日）</option>
+        </select>
+      </label>
+      <label>
         <span>タグ（カンマ区切り）</span>
         <input id="f-tags" type="text" placeholder="例: 会議, 資料, クライアントA" />
       </label>
@@ -183,6 +209,7 @@
     <button class="tab active" data-view="today">🌅 今日</button>
     <button class="tab" data-view="tasks">📝 タスク</button>
     <button class="tab" data-view="habits">⭐ Daily</button>
+    <button class="tab" data-view="stats">📊 統計</button>
   </nav>
 
   <!-- 習慣編集モーダル -->

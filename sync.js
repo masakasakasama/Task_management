@@ -112,6 +112,15 @@ function maybeHardReset(data) {
   return {
     tasks: Array.isArray(data.tasks) ? data.tasks : [],
     habits: Array.isArray(data.habits) ? data.habits : [],
+    tombstones: data.tombstones || { tasks: {}, habits: {} },
+  };
+}
+
+function readRemote(data) {
+  return {
+    tasks: Array.isArray(data.tasks) ? data.tasks : [],
+    habits: Array.isArray(data.habits) ? data.habits : [],
+    tombstones: data.tombstones || { tasks: {}, habits: {} },
   };
 }
 
@@ -152,14 +161,13 @@ export async function startSync({ spaceId, getState, onRemote, onStatus }) {
             onRemoteRef(hard2);
             return;
           }
-          const remote2 = {
-            tasks: Array.isArray(data2.tasks) ? data2.tasks : [],
-            habits: Array.isArray(data2.habits) ? data2.habits : [],
-          };
-          const h = hash(remote2);
+          const remote2 = readRemote(data2);
+          const local2 = getStateRef ? getStateRef() : { tasks: [], habits: [], tombstones: {} };
+          const merged2 = mergeState(local2, remote2);
+          const h = hash(merged2);
           if (h === lastRemoteHash) return;
           lastRemoteHash = h;
-          onRemoteRef(remote2);
+          onRemoteRef(merged2);
         },
         (err) => onStatusRef("err", "同期エラー: " + (err.code || err.message))
       );
@@ -169,10 +177,7 @@ export async function startSync({ spaceId, getState, onRemote, onStatus }) {
       return;
     }
 
-    const remote = {
-      tasks: Array.isArray(data.tasks) ? data.tasks : [],
-      habits: Array.isArray(data.habits) ? data.habits : [],
-    };
+    const remote = readRemote(data);
     const local = getState();
     const merged = mergeState(local, remote);
     lastRemoteHash = hash(merged);
@@ -200,14 +205,14 @@ export async function startSync({ spaceId, getState, onRemote, onStatus }) {
         onRemoteRef(hard);
         return;
       }
-      const remote = {
-        tasks: Array.isArray(data.tasks) ? data.tasks : [],
-        habits: Array.isArray(data.habits) ? data.habits : [],
-      };
-      const h = hash(remote);
+      const remote = readRemote(data);
+      // リモート変更にローカルのtombstoneを適用してから反映（削除の取りこぼし防止）
+      const local = getStateRef ? getStateRef() : { tasks: [], habits: [], tombstones: {} };
+      const merged = mergeState(local, remote);
+      const h = hash(merged);
       if (h === lastRemoteHash) return;
       lastRemoteHash = h;
-      onRemoteRef(remote);
+      onRemoteRef(merged);
     },
     (err) => {
       onStatusRef("err", "同期エラー: " + (err.code || err.message));
@@ -252,10 +257,44 @@ function schedulePush() {
   }, 500);
 }
 
+function gcTombstones(tomb) {
+  const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000; // 90日で掃除
+  const out = {};
+  for (const k in tomb || {}) {
+    if (typeof tomb[k] === "number" && tomb[k] >= cutoff) out[k] = tomb[k];
+  }
+  return out;
+}
+
+function mergeTombstones(a, b) {
+  const out = {};
+  for (const k in a || {}) out[k] = a[k];
+  for (const k in b || {}) out[k] = Math.max(out[k] || 0, b[k]);
+  return gcTombstones(out);
+}
+
+function applyTombstones(list, tomb) {
+  if (!tomb) return list || [];
+  return (list || []).filter((item) => {
+    if (!item || !item.id) return false;
+    const td = tomb[item.id];
+    if (td == null) return true;
+    // 削除時刻より後に更新されていれば「復活」として残す
+    return (item.updatedAt || 0) > td;
+  });
+}
+
 function mergeState(local, remote) {
+  const lt = local.tombstones || {};
+  const rt = remote.tombstones || {};
+  const tasksTomb = mergeTombstones(lt.tasks, rt.tasks);
+  const habitsTomb = mergeTombstones(lt.habits, rt.habits);
+  const tasks = applyTombstones(mergeById(local.tasks, remote.tasks), tasksTomb);
+  const habits = applyTombstones(mergeHabits(local.habits, remote.habits), habitsTomb);
   return {
-    tasks: mergeById(local.tasks, remote.tasks),
-    habits: mergeHabits(local.habits, remote.habits),
+    tasks,
+    habits,
+    tombstones: { tasks: tasksTomb, habits: habitsTomb },
   };
 }
 
@@ -317,7 +356,8 @@ function hash(obj) {
   try {
     const t = (obj.tasks || []).slice().sort((a, b) => (a.id > b.id ? 1 : -1));
     const h = (obj.habits || []).slice().sort((a, b) => (a.id > b.id ? 1 : -1));
-    const s = JSON.stringify({ t, h });
+    const tb = obj.tombstones || {};
+    const s = JSON.stringify({ t, h, tb });
     let x = 0;
     for (let i = 0; i < s.length; i++) x = (x * 31 + s.charCodeAt(i)) | 0;
     return String(x);

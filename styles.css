@@ -1223,3 +1223,34 @@ main { padding-bottom: 96px !important; }
   .habits-grid-wrap { max-height: 60vh; }
 }
 
+
+/* 繰り返しチップ */
+.row-chip.rec { background: var(--lavender); color: #3d2566; }
+
+/* ===== 統計タブ ===== */
+.stats-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.stat-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  text-align: center;
+}
+.stat-card .sv { font-size: 26px; font-weight: 800; color: var(--ink);
+  background: linear-gradient(135deg, var(--pink), var(--lavender));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.stat-card .sl { font-size: 11px; color: var(--ink-soft); margin-top: 4px; }
+.stat-card.danger .sv {
+  background: none; -webkit-text-fill-color: #d83a6a; color: #d83a6a;
+}
+.stats-habits { display: flex; flex-direction: column; gap: 12px; }
+.stat-habit { background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); padding: 12px 14px; }
+.stat-habit .sh-head { display: flex; justify-content: space-between;
+  align-items: center; font-weight: 700; font-size: 14px; }
+.stat-habit .sh-pct { color: var(--pink); font-weight: 800; }
+.stat-habit .sh-bar { height: 8px; background: var(--bg-2); border-radius: 999px;
+  overflow: hidden; margin: 8px 0 6px; }
+.stat-habit .sh-bar > div { height: 100%;
+  background: linear-gradient(90deg, var(--pink), var(--lavender)); transition: width .4s ease; }
+.stat-habit .sh-meta { font-size: 11px; color: var(--ink-soft); }

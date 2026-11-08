@@ -14,29 +14,17 @@ PC・スマホのブラウザでブックマーク or ホーム画面に追加�
 
 - **タイトル / 詳細 / 期限 / 優先度（高・中・低）/ ステータス（未着手・進行中・完了）/ タグ**
 - **自動保存**: 入力するそばからローカル & クラウドへ保存
-- **全端末リアルタイム同期**: 同じURLを開いた端末すべてで Firestore 経由で自動同期（ログイン・トークン不要）
+- **全端末リアルタイム同期**: Googleログイン（たつや・レベッカの2アカウントのみ）後、全端末で Firestore 経由で自動同期
 - **オフライン対応**: PWA としてホーム画面に追加可能、電波が弱くても使える
 - **検索 / 並び替え**: 期限・優先度・更新日などで並び替え、検索はタイトル/詳細/タグ横断
 - **ドラッグ&ドロップ**でステータス変更、`N` キーで新規、`/` キーで検索
 
 ## 同期の仕組み
 
-- 一意な `SPACE_ID`（50文字）を `sync.js` にハードコード
+- 許可された2つの Google アカウントでログインすると同期開始（`coupleauth.js`）
 - すべての端末が同じ Firestore ドキュメント (`spaces/<SPACE_ID>`) を読み書き
-- Firestore のセキュリティルールで「ID 24文字以上」のみ許可
-
-### Firestore セキュリティルール
-
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /spaces/{spaceId} {
-      allow read, write: if spaceId.size() >= 24;
-    }
-  }
-}
-```
+- アクセス制御は `firestore.rules`（2アカウント以外は読み書き不可）。Firebase Console の Firestore → ルール に貼り付けて公開する
+- Firebase Console の Authentication で Google ログインを有効にし、承認済みドメインに `masakasakasama.github.io` を追加する
 
 ## ファイル構成
 

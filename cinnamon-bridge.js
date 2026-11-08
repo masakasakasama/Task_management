@@ -23,6 +23,8 @@ import {
   doc,
   onSnapshot,
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import * as authApi from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+import { coupleAuth } from "./coupleauth.js";
 
 const cinnamonConfig = {
   apiKey: "AIzaSyBHXH8S-IUSUpTZ102XF4M6my3Lr4FDD_0",
@@ -83,6 +85,19 @@ export function startCinnamonBridge(onProgress, onStatus) {
     const db = getFirestore(app);
     const docRef = doc(db, "couples", COUPLE_ID);
 
+    // cinnamon-workout は別プロジェクトなので、そちらにもログインが必要
+    setStatus("sync", "シナモン: ログイン待ち");
+    coupleAuth(authApi, authApi.getAuth(app), {
+      id: "cinnamon",
+      label: "シナモン（筋トレ）連携にもGoogleログインが必要です",
+      onReady: () => subscribe(docRef),
+    });
+  } catch (err) {
+    console.warn("[cinnamon-bridge] setup err:", err);
+    setStatus("err", "シナモン: 初期化失敗 " + (err.message || err));
+  }
+
+  function subscribe(docRef) {
     onSnapshot(
       docRef,
       (snap) => {
@@ -113,8 +128,5 @@ export function startCinnamonBridge(onProgress, onStatus) {
         setStatus("err", "シナモン: " + (err.code || err.message || "エラー"));
       }
     );
-  } catch (err) {
-    console.warn("[cinnamon-bridge] setup err:", err);
-    setStatus("err", "シナモン: 初期化失敗 " + (err.message || err));
   }
 }

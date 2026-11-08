@@ -2,8 +2,8 @@
 // - Firebase 設定と SPACE_ID をハードコード
 // - 同じURLを開いた端末はすべて同じドキュメントを読み書き
 // - tasks と habits の両方を1ドキュメントで管理
-// - 認証なし、トークンなし、入力欄なし
-// - セキュリティ: Firestore ルールで「24文字以上のドキュメントID」のみ許可
+// - Googleログイン（2人のアカウントのみ）後に同期開始
+// - セキュリティ: firestore.rules で許可した2アカウント以外は読み書き不可
 
 import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import {
@@ -13,6 +13,8 @@ import {
   setDoc,
   getDoc,
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import * as authApi from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+import { coupleAuth } from "./coupleauth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAvxleNWQEtIP1I7WimhI5-X-6oVtcAw0I",
@@ -38,9 +40,25 @@ function ensureApp() {
   return getApps().find((a) => a.name === "[DEFAULT]") || initializeApp(firebaseConfig);
 }
 
+let signedIn = null;
+/** 許可された Google アカウントでログインするまで待つ */
+export function whenSignedIn() {
+  if (!signedIn) {
+    signedIn = new Promise((resolve) => {
+      coupleAuth(authApi, authApi.getAuth(ensureApp()), {
+        id: "tm",
+        label: "同期するにはGoogleでログインしてください",
+        onReady: resolve,
+      });
+    });
+  }
+  return signedIn;
+}
+
 /** ユーザー一覧（名前・絵文字）を全端末同期する */
 export async function startUsersSync({ getUsers, onRemote, onStatus }) {
   stopUsersSync();
+  await whenSignedIn();
   try {
     const a = ensureApp();
     const d = getFirestore(a);
@@ -129,6 +147,9 @@ export async function startSync({ spaceId, getState, onRemote, onStatus }) {
   getStateRef = getState;
   onRemoteRef = onRemote;
   onStatusRef = onStatus;
+
+  onStatus("sync", "ログイン待ち…");
+  await whenSignedIn();
 
   // 既存の default app を再利用（switchUser での再初期化を許容）
   app = getApps().find((a) => a.name === "[DEFAULT]") || initializeApp(firebaseConfig);
